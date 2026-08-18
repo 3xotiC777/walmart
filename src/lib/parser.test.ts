@@ -1,0 +1,31 @@
+import * as XLSX from 'xlsx';
+import { describe, expect, it } from 'vitest';
+import { parseWorkbook, WorkbookValidationError } from './parser';
+import { TEST_HEADERS } from './testHelpers';
+
+function workbookBuffer(sheetName = 'pqm consolidado') {
+  const row = TEST_HEADERS.map((header) => {
+    if (header === 'codiGo_barras') return '00123';
+    if (header === 'Row-Id') return 'ROW-1';
+    if (header === 'Id_Dn W') return 'ID-1';
+    if (['Cantidad_Productos', 'cantidad_comprada', 'Precio_Unidad', 'Precio_Total_Preciador', 'Monto Total Fc'].includes(header)) return 1;
+    return 'VALOR';
+  });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([TEST_HEADERS, row]), sheetName);
+  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+}
+
+describe('lector de libros', () => {
+  it('lee la hoja requerida y preserva códigos como texto', () => {
+    const dataset = parseWorkbook(workbookBuffer(), 'entrada.xlsx');
+
+    expect(dataset.records).toHaveLength(1);
+    expect(dataset.records[0].fields.codiGo_barras).toBe('00123');
+  });
+
+  it('rechaza archivos sin la hoja requerida', () => {
+    expect(() => parseWorkbook(workbookBuffer('Otra hoja'), 'entrada.xlsx')).toThrow(WorkbookValidationError);
+  });
+});
+

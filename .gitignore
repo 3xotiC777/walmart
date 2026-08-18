@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+.vite/
+*.log
+*.tsbuildinfo
+
+# Los insumos reales contienen datos personales y nunca deben publicarse.
+*.xlsx
+*.xls
+*.xlsm
+*.docx
+*.pptx
+
+!.github/
