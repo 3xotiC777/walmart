@@ -51,14 +51,14 @@ export interface AlertRecord {
   observed: string;
   expected: string;
   detail: string;
-  average?: number;
-  standardDeviation?: number;
+  firstQuartile?: number;
+  thirdQuartile?: number;
+  interquartileRange?: number;
   upperLimit?: number;
 }
 
 export interface RuleSummary extends RuleDefinition {
   affectedRows: number;
-  alertCount: number;
 }
 
 export interface ValidationMetrics {
@@ -95,4 +95,3 @@ export type WorkerMessage =
   | { type: 'progress'; message: string; progress: number }
   | { type: 'result'; payload: WorkerResult }
   | { type: 'error'; message: string };
-

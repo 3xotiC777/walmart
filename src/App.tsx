@@ -193,9 +193,9 @@ export default function App() {
 
   const totalPages = Math.max(1, Math.ceil(filteredAlerts.length / PAGE_SIZE));
   const paginatedAlerts = filteredAlerts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const rulesWithAlerts = result?.ruleSummaries.filter((rule) => rule.alertCount > 0) ?? [];
+  const rulesWithAlerts = result?.ruleSummaries.filter((rule) => rule.affectedRows > 0) ?? [];
   const displayedRules =
-    result?.ruleSummaries.filter((rule) => showAllRules || rule.alertCount > 0 || rule.id === 'R21') ?? [];
+    result?.ruleSummaries.filter((rule) => showAllRules || rule.affectedRows > 0 || rule.id === 'R21') ?? [];
 
   useEffect(() => setPage(1), [search, ruleFilter]);
   useEffect(() => {
@@ -340,7 +340,7 @@ export default function App() {
                       <tr key={rule.id}>
                         <td><span className="rule-code">{rule.id}</span></td>
                         <td><strong>{rule.name}</strong><small>{rule.description}</small></td>
-                        <td><span className={`status-pill ${rule.status === 'Visual no automatizado' ? 'status-visual' : rule.alertCount > 0 ? 'status-alert' : 'status-ok'}`}>{rule.status === 'Visual no automatizado' ? 'Visual' : rule.alertCount > 0 ? 'Con alertas' : 'Sin alertas'}</span></td>
+                        <td><span className={`status-pill ${rule.status === 'Visual no automatizado' ? 'status-visual' : rule.affectedRows > 0 ? 'status-alert' : 'status-ok'}`}>{rule.status === 'Visual no automatizado' ? 'Visual' : rule.affectedRows > 0 ? 'Con alertas' : 'Sin alertas'}</span></td>
                         <td className="numeric-cell">{numberFormatter.format(rule.affectedRows)}</td>
                       </tr>
                     ))}

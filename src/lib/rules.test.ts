@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { validateDataset } from './rules';
+import { percentileInclusive, validateDataset } from './rules';
 import { makeDataset, TEST_HIERARCHY } from './testHelpers';
 
 describe('motor de validación PQM', () => {
+  it('calcula cuartiles inclusivos equivalentes a CUARTIL.INC', () => {
+    expect(percentileInclusive([1, 2, 3, 4], 0.25)).toBe(1.75);
+    expect(percentileInclusive([1, 2, 3, 4], 0.75)).toBe(3.25);
+  });
+
   it('normaliza mayúsculas y espacios y alerta todas las filas de un grupo conflictivo', () => {
     const dataset = makeDataset([
       { codiGo_barras: ' 001 ', Descripcion: 'Producto marca' },
@@ -56,11 +61,13 @@ describe('motor de validación PQM', () => {
     expect(alerts.map((alert) => alert.sourceRow)).toEqual([4, 5]);
   });
 
-  it('calcula el límite de precio por la misma combinación código-descripción', () => {
+  it('calcula el límite superior de Tukey por la misma combinación código-descripción', () => {
     const dataset = makeDataset([
       { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 10 },
       { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 10 },
-      { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 30 },
+      { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 10 },
+      { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 10 },
+      { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 100 },
       { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION B', Precio_Unidad: 1000 },
       { codiGo_barras: 'UNICO', Descripcion: 'DESCRIPCION A', Precio_Unidad: 50 },
     ]);
@@ -68,10 +75,12 @@ describe('motor de validación PQM', () => {
     const alerts = validateDataset(dataset, TEST_HIERARCHY).alerts.filter((alert) => alert.ruleId === 'R25');
 
     expect(alerts).toHaveLength(1);
-    expect(alerts[0].observed).toBe('30');
+    expect(alerts[0].observed).toBe('100');
     expect(alerts[0].key).toContain('DESCRIPCION A');
-    expect(alerts[0].average).toBeCloseTo(16.6667, 3);
-    expect(alerts[0].standardDeviation).toBeCloseTo(9.4281, 3);
+    expect(alerts[0].firstQuartile).toBe(10);
+    expect(alerts[0].thirdQuartile).toBe(10);
+    expect(alerts[0].interquartileRange).toBe(0);
+    expect(alerts[0].upperLimit).toBe(10);
   });
 
   it('valida las sumas de cantidad y monto por ID con sus campos reales', () => {

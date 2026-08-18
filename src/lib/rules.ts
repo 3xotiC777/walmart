@@ -50,8 +50,8 @@ const AUTOMATIC_RULES: RuleDefinition[] = [
   ['R24', 'Marca → tipo de marca', 'Una marca solo puede tener un tipo de marca.'],
   [
     'R25',
-    'Precio alto por código y descripción',
-    'Precio superior al promedio más una desviación estándar poblacional de la misma combinación código-descripción.',
+    'Precio atípico por código y descripción',
+    'Precio superior a Q3 + 1,5 veces el rango intercuartílico de la misma combinación código-descripción.',
   ],
   ['R26', 'Cantidades por ID', 'La suma de cantidad_comprada debe ser igual al máximo de Cantidad_Productos.'],
   ['R27', 'Montos por ID', 'La suma de Precio_Total_Preciador debe ser igual al máximo de Monto Total Fc.'],
@@ -177,6 +177,18 @@ export function numericValue(value: unknown): number | null {
   if (typeof value !== 'string' || value.trim() === '') return null;
   const parsed = Number(value.trim());
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function percentileInclusive(sortedValues: number[], probability: number): number {
+  if (sortedValues.length === 0) throw new Error('No se puede calcular un cuartil sin valores.');
+  const index = (sortedValues.length - 1) * probability;
+  const lowerIndex = Math.floor(index);
+  const upperIndex = Math.ceil(index);
+  if (lowerIndex === upperIndex) return sortedValues[lowerIndex];
+  return (
+    sortedValues[lowerIndex] +
+    (sortedValues[upperIndex] - sortedValues[lowerIndex]) * (index - lowerIndex)
+  );
 }
 
 function ruleName(ruleId: string): string {
@@ -317,10 +329,11 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
     priceGroups.set(groupKey, group);
   }
   for (const group of priceGroups.values()) {
-    const average = group.reduce((sum, item) => sum + item.price, 0) / group.length;
-    const variance = group.reduce((sum, item) => sum + (item.price - average) ** 2, 0) / group.length;
-    const standardDeviation = Math.sqrt(variance);
-    const upperLimit = average + standardDeviation;
+    const sortedPrices = group.map((item) => item.price).sort((a, b) => a - b);
+    const firstQuartile = percentileInclusive(sortedPrices, 0.25);
+    const thirdQuartile = percentileInclusive(sortedPrices, 0.75);
+    const interquartileRange = thirdQuartile - firstQuartile;
+    const upperLimit = thirdQuartile + 1.5 * interquartileRange;
     for (const { record, price } of group) {
       if (price <= upperLimit) continue;
       addAlert({
@@ -330,12 +343,13 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
         )}`,
         field: 'Precio_Unidad',
         observed: displayValue(record.fields.Precio_Unidad),
-        expected: `Máximo esperado: ${upperLimit.toFixed(4)}`,
-        detail: `Para el mismo código y descripción, precio ${price} > promedio ${average.toFixed(
+        expected: `Límite superior por cuartiles: ${upperLimit.toFixed(4)}`,
+        detail: `Para el mismo código y descripción, precio ${price} > Q3 ${thirdQuartile.toFixed(
           4,
-        )} + desviación ${standardDeviation.toFixed(4)}.`,
-        average,
-        standardDeviation,
+        )} + 1,5 × RIC ${interquartileRange.toFixed(4)} = ${upperLimit.toFixed(4)}.`,
+        firstQuartile,
+        thirdQuartile,
+        interquartileRange,
         upperLimit,
       });
     }
@@ -437,7 +451,6 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
   const ruleSummaries: RuleSummary[] = RULE_DEFINITIONS.map((rule) => ({
     ...rule,
     affectedRows: summaryCounts.get(rule.id)?.size ?? 0,
-    alertCount: alerts.filter((alert) => alert.ruleId === rule.id).length,
   }));
 
   const reviewRecords = reviewedRecords.length;

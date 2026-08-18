@@ -15,8 +15,15 @@ describe('Excel de salida', () => {
     const workbook = XLSX.read(output, { type: 'array' });
 
     expect(workbook.SheetNames).toEqual(['Resumen', 'Alertas', 'Registros_a_revisar']);
+    const summary = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumen, { header: 1 });
+    expect(summary[11]).toEqual(['Regla', 'Nombre', 'Estado', 'Registros afectados', 'Descripción']);
+    const alertHeaders = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Alertas, { header: 1 })[0];
+    expect(alertHeaders).toContain('Cuartil_1');
+    expect(alertHeaders).toContain('Cuartil_3');
+    expect(alertHeaders).toContain('Rango_Intercuartil');
+    expect(alertHeaders).not.toContain('Promedio');
+    expect(alertHeaders).not.toContain('Desviacion_Estandar');
     const reviewed = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Registros_a_revisar);
     expect(reviewed[0].codiGo_barras).toBe('00123');
   });
 });
-
