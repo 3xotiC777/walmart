@@ -8,6 +8,7 @@ describe('Excel de salida', () => {
   it('genera las tres hojas requeridas y conserva los identificadores', () => {
     const dataset = makeDataset([
       { codiGo_barras: '00123', Descripcion: 'PRODUCTO MARCA' },
+      { codiGo_barras: '00123', Descripcion: ' PRODUCTO MARCA ' },
       { codiGo_barras: '00123', Descripcion: 'OTRO PRODUCTO MARCA' },
     ]);
     const validation = validateDataset(dataset, TEST_HIERARCHY);
@@ -17,6 +18,7 @@ describe('Excel de salida', () => {
     expect(workbook.SheetNames).toEqual(['Resumen', 'Alertas', 'Registros_a_revisar']);
     const summary = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumen, { header: 1 });
     expect(summary[11]).toEqual(['Regla', 'Nombre', 'Estado', 'Registros afectados', 'Alertas', 'Descripción']);
+    expect(summary.find((row) => row[0] === 'R01')?.slice(3, 5)).toEqual([3, 1]);
     const alertHeaders = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Alertas, { header: 1 })[0];
     expect(alertHeaders).toContain('Cuartil_1');
     expect(alertHeaders).toContain('Cuartil_3');
@@ -24,6 +26,7 @@ describe('Excel de salida', () => {
     expect(alertHeaders).not.toContain('Promedio');
     expect(alertHeaders).not.toContain('Desviacion_Estandar');
     const reviewed = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Registros_a_revisar);
+    expect(reviewed).toHaveLength(1);
     expect(reviewed[0].codiGo_barras).toBe('00123');
   });
 });

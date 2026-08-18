@@ -334,7 +334,7 @@ export default function App() {
               </div>
               <div className="table-scroll">
                 <table className="rules-table">
-                  <thead><tr><th>Regla</th><th>Control</th><th>Estado</th><th>Registros</th></tr></thead>
+                  <thead><tr><th>Regla</th><th>Control</th><th>Estado</th><th>Registros afectados</th><th>Alertas</th></tr></thead>
                   <tbody>
                     {displayedRules.map((rule) => (
                       <tr key={rule.id}>
@@ -342,6 +342,7 @@ export default function App() {
                         <td><strong>{rule.name}</strong><small>{rule.description}</small></td>
                         <td><span className={`status-pill ${rule.status === 'Visual no automatizado' ? 'status-visual' : rule.alertCount > 0 ? 'status-alert' : 'status-ok'}`}>{rule.status === 'Visual no automatizado' ? 'Visual' : rule.alertCount > 0 ? 'Con alertas' : 'Sin alertas'}</span></td>
                         <td className="numeric-cell">{numberFormatter.format(rule.affectedRows)}</td>
+                        <td className="numeric-cell">{numberFormatter.format(rule.alertCount)}</td>
                       </tr>
                     ))}
                   </tbody>

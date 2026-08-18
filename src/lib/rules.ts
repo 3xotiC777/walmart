@@ -16,7 +16,7 @@ interface CardinalityRule {
 
 interface GroupData {
   rows: SourceRecord[];
-  targets: Map<string, string>;
+  targets: Map<string, { displayValue: string; rows: SourceRecord[] }>;
 }
 
 const AUTOMATIC_RULES: RuleDefinition[] = [
@@ -209,9 +209,19 @@ function baseAlert(record: SourceRecord, ruleId: string): Omit<AlertRecord, 'key
 
 export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCatalog): ValidationResult {
   const alertsByKey = new Map<string, AlertRecord>();
+  const affectedRowsByRule = new Map<string, Set<number>>();
+
+  const markAffected = (ruleId: string, records: SourceRecord[]) => {
+    const affectedRows = affectedRowsByRule.get(ruleId) ?? new Set<number>();
+    for (const record of records) affectedRows.add(record.excelRow);
+    affectedRowsByRule.set(ruleId, affectedRows);
+  };
 
   const addAlert = (alert: AlertRecord) => {
     alertsByKey.set(`${alert.ruleId}|${alert.sourceRow}`, alert);
+    const affectedRows = affectedRowsByRule.get(alert.ruleId) ?? new Set<number>();
+    affectedRows.add(alert.sourceRow);
+    affectedRowsByRule.set(alert.ruleId, affectedRows);
   };
 
   for (const record of dataset.records) {
@@ -275,28 +285,50 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
       if (normalizedKeys.some((value) => value === '') || normalizedTarget === '') continue;
 
       const groupKey = normalizedKeys.join(GROUP_SEPARATOR);
-      const group = groups.get(groupKey) ?? { rows: [], targets: new Map<string, string>() };
+      const group = groups.get(groupKey) ?? {
+        rows: [],
+        targets: new Map<string, { displayValue: string; rows: SourceRecord[] }>(),
+      };
       group.rows.push(record);
-      if (!group.targets.has(normalizedTarget)) {
-        group.targets.set(normalizedTarget, displayValue(record.fields[rule.targetField]));
-      }
+      const target = group.targets.get(normalizedTarget) ?? {
+        displayValue: displayValue(record.fields[rule.targetField]),
+        rows: [],
+      };
+      target.rows.push(record);
+      group.targets.set(normalizedTarget, target);
       groups.set(groupKey, group);
     }
 
     for (const group of groups.values()) {
       if (group.targets.size <= 1) continue;
-      const expectedValues = [...group.targets.values()].sort((a, b) => a.localeCompare(b, 'es')).join(' | ');
-      for (const record of group.rows) {
+      markAffected(rule.id, group.rows);
+
+      const targetsByFrequency = [...group.targets.values()].sort(
+        (a, b) => b.rows.length - a.rows.length || a.displayValue.localeCompare(b.displayValue, 'es'),
+      );
+      const highestFrequency = targetsByFrequency[0].rows.length;
+      const mostFrequentTargets = targetsByFrequency.filter((target) => target.rows.length === highestFrequency);
+      const hasUniqueMajority = mostFrequentTargets.length === 1;
+      const majorityTarget = hasUniqueMajority ? mostFrequentTargets[0] : null;
+      const rowsToAlert = majorityTarget
+        ? targetsByFrequency.filter((target) => target !== majorityTarget).flatMap((target) => target.rows)
+        : group.rows;
+      const conflictingValues = targetsByFrequency.map((target) => target.displayValue).join(' | ');
+
+      for (const record of rowsToAlert) {
         const key = rule.keyFields
           .map((field) => `${field}: ${displayValue(record.fields[field])}`)
           .join(' · ');
+        const majorityDetail = majorityTarget
+          ? `El valor mayoritario es "${majorityTarget.displayValue}" (${majorityTarget.rows.length} de ${group.rows.length}); revisar "${displayValue(record.fields[rule.targetField])}".`
+          : `No existe un valor mayoritario único entre: ${conflictingValues}.`;
         addAlert({
           ...baseAlert(record, rule.id),
           key,
           field: rule.targetField,
           observed: displayValue(record.fields[rule.targetField]),
-          expected: expectedValues,
-          detail: `${key} tiene ${group.targets.size} valores distintos en ${rule.targetField}.`,
+          expected: majorityTarget?.displayValue ?? `Sin mayoría: ${conflictingValues}`,
+          detail: `${key} afecta ${group.rows.length} registros y tiene ${group.targets.size} valores distintos en ${rule.targetField}. ${majorityDetail}`,
         });
       }
     }
@@ -442,15 +474,9 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
     .filter((record) => alertsPerRow.has(record.excelRow))
     .map((record) => ({ record, alerts: alertsPerRow.get(record.excelRow) ?? [] }));
 
-  const summaryCounts = new Map<string, Set<number>>();
-  for (const alert of alerts) {
-    const rows = summaryCounts.get(alert.ruleId) ?? new Set<number>();
-    rows.add(alert.sourceRow);
-    summaryCounts.set(alert.ruleId, rows);
-  }
   const ruleSummaries: RuleSummary[] = RULE_DEFINITIONS.map((rule) => ({
     ...rule,
-    affectedRows: summaryCounts.get(rule.id)?.size ?? 0,
+    affectedRows: affectedRowsByRule.get(rule.id)?.size ?? 0,
     alertCount: alerts.filter((alert) => alert.ruleId === rule.id).length,
   }));
 

@@ -8,7 +8,7 @@ describe('motor de validación PQM', () => {
     expect(percentileInclusive([1, 2, 3, 4], 0.75)).toBe(3.25);
   });
 
-  it('normaliza mayúsculas y espacios y alerta todas las filas de un grupo conflictivo', () => {
+  it('cuenta todo el grupo como afectado y alerta solo el valor diferente de la mayoría', () => {
     const dataset = makeDataset([
       { codiGo_barras: ' 001 ', Descripcion: 'Producto marca' },
       { codiGo_barras: '001', Descripcion: ' PRODUCTO MARCA ' },
@@ -18,8 +18,29 @@ describe('motor de validación PQM', () => {
     const result = validateDataset(dataset, TEST_HIERARCHY);
     const alerts = result.alerts.filter((alert) => alert.ruleId === 'R01');
 
-    expect(alerts).toHaveLength(3);
-    expect(new Set(alerts.map((alert) => alert.sourceRow))).toEqual(new Set([2, 3, 4]));
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].sourceRow).toBe(4);
+    expect(alerts[0].expected).toBe('Producto marca');
+    expect(result.ruleSummaries.find((rule) => rule.id === 'R01')).toMatchObject({
+      affectedRows: 3,
+      alertCount: 1,
+    });
+  });
+
+  it('alerta todas las filas cuando los valores están empatados y no existe mayoría', () => {
+    const dataset = makeDataset([
+      { codiGo_barras: '001', Descripcion: 'DESCRIPCION A' },
+      { codiGo_barras: '001', Descripcion: 'DESCRIPCION B' },
+    ]);
+
+    const result = validateDataset(dataset, TEST_HIERARCHY);
+    const alerts = result.alerts.filter((alert) => alert.ruleId === 'R01');
+
+    expect(alerts.map((alert) => alert.sourceRow)).toEqual([2, 3]);
+    expect(result.ruleSummaries.find((rule) => rule.id === 'R01')).toMatchObject({
+      affectedRows: 2,
+      alertCount: 2,
+    });
   });
 
   it('reporta campos vacíos sin usarlos como valores de cardinalidad', () => {
