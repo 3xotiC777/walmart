@@ -451,6 +451,7 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
   const ruleSummaries: RuleSummary[] = RULE_DEFINITIONS.map((rule) => ({
     ...rule,
     affectedRows: summaryCounts.get(rule.id)?.size ?? 0,
+    alertCount: alerts.filter((alert) => alert.ruleId === rule.id).length,
   }));
 
   const reviewRecords = reviewedRecords.length;

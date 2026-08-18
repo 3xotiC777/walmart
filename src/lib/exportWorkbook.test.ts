@@ -16,7 +16,7 @@ describe('Excel de salida', () => {
 
     expect(workbook.SheetNames).toEqual(['Resumen', 'Alertas', 'Registros_a_revisar']);
     const summary = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumen, { header: 1 });
-    expect(summary[11]).toEqual(['Regla', 'Nombre', 'Estado', 'Registros afectados', 'Descripción']);
+    expect(summary[11]).toEqual(['Regla', 'Nombre', 'Estado', 'Registros afectados', 'Alertas', 'Descripción']);
     const alertHeaders = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Alertas, { header: 1 })[0];
     expect(alertHeaders).toContain('Cuartil_1');
     expect(alertHeaders).toContain('Cuartil_3');

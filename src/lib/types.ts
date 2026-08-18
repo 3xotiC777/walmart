@@ -59,6 +59,7 @@ export interface AlertRecord {
 
 export interface RuleSummary extends RuleDefinition {
   affectedRows: number;
+  alertCount: number;
 }
 
 export interface ValidationMetrics {

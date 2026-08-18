@@ -35,19 +35,20 @@ export function buildOutputWorkbook(
     ['Porcentaje a revisar', result.metrics.reviewPercent / 100],
     ['Eventos de alerta', result.metrics.totalAlerts],
     ['', ''],
-    ['Regla', 'Nombre', 'Estado', 'Registros afectados', 'Descripción'],
+    ['Regla', 'Nombre', 'Estado', 'Registros afectados', 'Alertas', 'Descripción'],
     ...result.ruleSummaries.map((rule) => [
       rule.id,
       rule.name,
       rule.status,
       rule.affectedRows,
+      rule.alertCount,
       rule.description,
     ]),
   ];
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows, { cellDates: true });
-  summarySheet['!merges'] = [XLSX.utils.decode_range('A1:E1')];
+  summarySheet['!merges'] = [XLSX.utils.decode_range('A1:F1')];
   if (summarySheet.B9) summarySheet.B9.z = '0.0%';
-  setColumns(summarySheet, [16, 34, 24, 20, 76]);
+  setColumns(summarySheet, [16, 34, 24, 20, 14, 76]);
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen');
 
   const alertRows = result.alerts.map((alert) => ({
