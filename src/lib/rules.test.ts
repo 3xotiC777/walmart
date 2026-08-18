@@ -43,18 +43,33 @@ describe('motor de validación PQM', () => {
     expect(alerts[0].sourceRow).toBe(3);
   });
 
-  it('usa desviación estándar poblacional y solo alerta por encima del límite', () => {
+  it('excluye de la regla 8 los gramajes variables medidos en kilos', () => {
     const dataset = makeDataset([
-      { codiGo_barras: 'P1', Precio_Unidad: 10 },
-      { codiGo_barras: 'P1', Precio_Unidad: 10 },
-      { codiGo_barras: 'P1', Precio_Unidad: 30 },
-      { codiGo_barras: 'UNICO', Precio_Unidad: 50 },
+      { codiGo_barras: 'PESO', Descripcion: 'HUEVOS POR KILO', Gramaje: 1.5, unidad_de_Medida: 'KILOS' },
+      { codiGo_barras: 'PESO', Descripcion: 'HUEVOS POR KILO', Gramaje: 2.1, unidad_de_Medida: ' kilos ' },
+      { codiGo_barras: 'FIJO', Descripcion: 'PRODUCTO EMPACADO', Gramaje: 1, unidad_de_Medida: 'UNIDADES' },
+      { codiGo_barras: 'FIJO', Descripcion: 'PRODUCTO EMPACADO', Gramaje: 2, unidad_de_Medida: 'UNIDADES' },
+    ]);
+
+    const alerts = validateDataset(dataset, TEST_HIERARCHY).alerts.filter((alert) => alert.ruleId === 'R08');
+
+    expect(alerts.map((alert) => alert.sourceRow)).toEqual([4, 5]);
+  });
+
+  it('calcula el límite de precio por la misma combinación código-descripción', () => {
+    const dataset = makeDataset([
+      { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 10 },
+      { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 10 },
+      { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 30 },
+      { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION B', Precio_Unidad: 1000 },
+      { codiGo_barras: 'UNICO', Descripcion: 'DESCRIPCION A', Precio_Unidad: 50 },
     ]);
 
     const alerts = validateDataset(dataset, TEST_HIERARCHY).alerts.filter((alert) => alert.ruleId === 'R25');
 
     expect(alerts).toHaveLength(1);
     expect(alerts[0].observed).toBe('30');
+    expect(alerts[0].key).toContain('DESCRIPCION A');
     expect(alerts[0].average).toBeCloseTo(16.6667, 3);
     expect(alerts[0].standardDeviation).toBeCloseTo(9.4281, 3);
   });
@@ -89,4 +104,3 @@ describe('motor de validación PQM', () => {
     expect(result.ruleSummaries.find((rule) => rule.id === 'R21')?.status).toBe('Visual no automatizado');
   });
 });
-

@@ -27,7 +27,11 @@ const AUTOMATIC_RULES: RuleDefinition[] = [
   ['R05', 'Código → marca', 'Un código de barras solo puede tener una marca.'],
   ['R06', 'Código → tipo de marca', 'Un código de barras solo puede tener un tipo de marca.'],
   ['R07', 'Código → canasto', 'Un código de barras solo puede tener un canasto.'],
-  ['R08', 'Código y descripción → gramaje', 'La combinación código-descripción solo puede tener un gramaje.'],
+  [
+    'R08',
+    'Código y descripción → gramaje',
+    'La combinación código-descripción solo puede tener un gramaje; se excluyen productos de peso variable en KILOS.',
+  ],
   ['R09', 'Código y descripción → unidad', 'La combinación código-descripción solo puede tener una unidad de medida.'],
   ['R10', 'Código y descripción → código estándar', 'La combinación código-descripción solo puede tener un código estándar no vacío.'],
   ['R11', 'Descripción → código', 'Una descripción solo puede tener un código de barras.'],
@@ -44,7 +48,11 @@ const AUTOMATIC_RULES: RuleDefinition[] = [
   ['R22', 'Categoría → división', 'Una categoría solo puede tener una división.'],
   ['R23', 'Categoría → canasto', 'Una categoría solo puede tener un canasto.'],
   ['R24', 'Marca → tipo de marca', 'Una marca solo puede tener un tipo de marca.'],
-  ['R25', 'Precio alto por código', 'Precio superior al promedio más una desviación estándar poblacional.'],
+  [
+    'R25',
+    'Precio alto por código y descripción',
+    'Precio superior al promedio más una desviación estándar poblacional de la misma combinación código-descripción.',
+  ],
   ['R26', 'Cantidades por ID', 'La suma de cantidad_comprada debe ser igual al máximo de Cantidad_Productos.'],
   ['R27', 'Montos por ID', 'La suma de Precio_Total_Preciador debe ser igual al máximo de Monto Total Fc.'],
 ].map(([id, name, description]) => ({
@@ -149,6 +157,7 @@ const NUMERIC_FIELDS = [
 ];
 
 const SPECIAL_BRANDS = new Set(['NO IDENTIFICABLE', 'SIN MARCA']);
+const VARIABLE_WEIGHT_UNITS = new Set(['KILOS']);
 const GROUP_SEPARATOR = '\u241F';
 
 export function normalizeText(value: unknown): string {
@@ -245,6 +254,10 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
   for (const rule of CARDINALITY_RULES) {
     const groups = new Map<string, GroupData>();
     for (const record of dataset.records) {
+      if (rule.id === 'R08' && VARIABLE_WEIGHT_UNITS.has(normalizeText(record.fields.unidad_de_Medida))) {
+        continue;
+      }
+
       const normalizedKeys = rule.keyFields.map((field) => normalizeText(record.fields[field]));
       const normalizedTarget = normalizeText(record.fields[rule.targetField]);
       if (normalizedKeys.some((value) => value === '') || normalizedTarget === '') continue;
@@ -294,13 +307,16 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
   const priceGroups = new Map<string, Array<{ record: SourceRecord; price: number }>>();
   for (const record of dataset.records) {
     const barcode = normalizeText(record.fields.codiGo_barras);
+    const description = normalizeText(record.fields.Descripcion);
     const price = numericValue(record.fields.Precio_Unidad);
-    if (!barcode || price === null) continue;
-    const group = priceGroups.get(barcode) ?? [];
+    if (!barcode || !description || price === null) continue;
+
+    const groupKey = [barcode, description].join(GROUP_SEPARATOR);
+    const group = priceGroups.get(groupKey) ?? [];
     group.push({ record, price });
-    priceGroups.set(barcode, group);
+    priceGroups.set(groupKey, group);
   }
-  for (const [barcode, group] of priceGroups) {
+  for (const group of priceGroups.values()) {
     const average = group.reduce((sum, item) => sum + item.price, 0) / group.length;
     const variance = group.reduce((sum, item) => sum + (item.price - average) ** 2, 0) / group.length;
     const standardDeviation = Math.sqrt(variance);
@@ -309,11 +325,15 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
       if (price <= upperLimit) continue;
       addAlert({
         ...baseAlert(record, 'R25'),
-        key: barcode,
+        key: `codiGo_barras: ${displayValue(record.fields.codiGo_barras)} · Descripcion: ${displayValue(
+          record.fields.Descripcion,
+        )}`,
         field: 'Precio_Unidad',
         observed: displayValue(record.fields.Precio_Unidad),
         expected: `Máximo esperado: ${upperLimit.toFixed(4)}`,
-        detail: `Precio ${price} > promedio ${average.toFixed(4)} + desviación ${standardDeviation.toFixed(4)}.`,
+        detail: `Para el mismo código y descripción, precio ${price} > promedio ${average.toFixed(
+          4,
+        )} + desviación ${standardDeviation.toFixed(4)}.`,
         average,
         standardDeviation,
         upperLimit,
@@ -435,4 +455,3 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
     reviewedRecords,
   };
 }
-

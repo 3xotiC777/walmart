@@ -18,14 +18,13 @@ describe('archivo PQM de referencia', () => {
 
     expect(result.metrics).toEqual({
       totalRecords: 15509,
-      reviewRecords: 1237,
-      okRecords: 14272,
-      reviewPercent: expect.closeTo((1237 / 15509) * 100, 8),
-      totalAlerts: 1260,
+      reviewRecords: 1135,
+      okRecords: 14374,
+      reviewPercent: expect.closeTo((1135 / 15509) * 100, 8),
+      totalAlerts: 1147,
     });
-    expect(result.ruleSummaries.find((rule) => rule.id === 'R08')?.affectedRows).toBe(113);
+    expect(result.ruleSummaries.find((rule) => rule.id === 'R08')?.affectedRows).toBe(0);
     expect(result.ruleSummaries.find((rule) => rule.id === 'R25')?.affectedRows).toBe(626);
     expect(result.ruleSummaries.find((rule) => rule.id === 'JER-01')?.affectedRows).toBe(480);
   }, 30_000);
 });
-
