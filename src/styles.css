@@ -304,3 +304,102 @@ tbody tr:hover td { background: #f9fbff; }
   .filters-row { padding: 0 16px 14px; }
   .download-callout { padding: 16px; }
 }
+
+/* Distinct dashboard composition — visual only. */
+body { background: #eef2f7; }
+.topbar {
+  height: 76px;
+  background: #ffffff;
+  border-bottom: 0;
+  box-shadow: 0 1px 0 rgba(20, 33, 61, 0.08), 0 8px 24px rgba(20, 33, 61, 0.04);
+}
+.brand-mark { background: #ffca28; color: #102a56; }
+.local-badge { box-shadow: inset 0 0 0 1px rgba(20, 122, 88, 0.03); }
+
+main { width: min(1240px, calc(100% - 40px)); }
+.hero {
+  min-height: 372px;
+  margin: 28px 0 0;
+  padding: 52px 54px 68px;
+  overflow: hidden;
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 82% 16%, rgba(47, 135, 255, 0.32), transparent 24%),
+    radial-gradient(circle at 64% 110%, rgba(59, 194, 159, 0.19), transparent 30%),
+    linear-gradient(128deg, #0d1f43 0%, #123a75 100%);
+  box-shadow: 0 24px 52px rgba(13, 31, 67, 0.2);
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.32;
+  background-image: linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(90deg, #000 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-copy, .hero-visual { z-index: 1; }
+.eyebrow { color: #8ec5ff; }
+.hero h1 { color: #ffffff; max-width: 650px; font-size: clamp(42px, 4.7vw, 62px); }
+.hero-copy > p:not(.eyebrow) { color: #c8d6ed; max-width: 590px; }
+.hero-facts { color: #eff6ff; }
+.hero-facts span { border-color: rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(8px); }
+.hero-facts svg { stroke: #70e0b0; }
+.hero-visual { border-color: rgba(255, 255, 255, 0.16); background: rgba(9, 28, 64, 0.22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09); }
+.visual-orbit { border-color: rgba(159, 207, 255, 0.34); }
+.orbit-two { background: rgba(76, 150, 255, 0.13); }
+.visual-center { background: #ffca28; color: #0d2f68; box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2); }
+.visual-center svg { color: currentColor; }
+.visual-card { background: rgba(255, 255, 255, 0.98); }
+
+.workspace-card {
+  position: relative;
+  z-index: 2;
+  margin: -34px 34px 64px;
+  padding: 18px;
+  border-radius: 18px;
+  box-shadow: 0 24px 48px rgba(13, 31, 67, 0.16);
+}
+.dropzone {
+  min-height: 315px;
+  border: 1px solid #dae2ec;
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, #0b63ce 4px, transparent 4px),
+    #ffffff;
+}
+.dropzone.is-dragging { transform: none; box-shadow: inset 0 0 0 2px #0b63ce; }
+.upload-icon { width: 62px; height: 62px; background: #e8f1ff; }
+.dropzone h2 { font-size: 27px; }
+.privacy-note { margin-top: 12px; border-radius: 9px; background: #f3fbf7; }
+
+.results { margin-top: 28px; }
+.results-heading { padding: 0 4px 8px; }
+.metrics-grid { gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--line); }
+.metric-card { border: 0; border-radius: 0; box-shadow: none; }
+.metric-card:first-child { border-radius: 15px 0 0 15px; }
+.metric-card:last-child { border-radius: 0 15px 15px 0; }
+.metric-card strong { font-size: 32px; }
+.results-panel { border-radius: 14px; }
+.panel-heading { background: #fff; }
+.rules-table td:nth-child(2) { width: 62%; }
+.download-callout { border: 1px solid rgba(255, 255, 255, 0.12); background: linear-gradient(120deg, #11264e, #0d3f82); }
+
+@media (max-width: 960px) {
+  .hero { padding: 46px 36px 60px; }
+  .workspace-card { margin-left: 18px; margin-right: 18px; }
+}
+
+@media (max-width: 680px) {
+  .topbar { height: 68px; }
+  main { width: min(100% - 24px, 1240px); }
+  .hero { margin-top: 12px; padding: 40px 24px 52px; border-radius: 20px; }
+  .hero h1 { font-size: 42px; }
+  .workspace-card { margin: -22px 8px 46px; padding: 10px; border-radius: 14px; }
+  .dropzone { min-height: 336px; padding: 32px 18px; }
+  .metrics-grid { grid-template-columns: 1fr; gap: 1px; border-radius: 14px; }
+  .metric-card:first-child, .metric-card:last-child { border-radius: 0; }
+  .metric-card:first-child { border-radius: 13px 13px 0 0; }
+  .metric-card:last-child { border-radius: 0 0 13px 13px; }
+}
