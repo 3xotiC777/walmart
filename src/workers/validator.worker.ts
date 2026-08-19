@@ -2,6 +2,7 @@
 
 import hierarchyData from '../data/hierarchy.json';
 import { buildOutputWorkbook } from '../lib/exportWorkbook';
+import { generateOrthographyAlerts } from '../lib/orthography';
 import { parseInvoiceWorkbook, parseWorkbook } from '../lib/parser';
 import { validateDataset } from '../lib/rules';
 import type { HierarchyCatalog, WorkerMessage, WorkerRequest, WorkerResult } from '../lib/types';
@@ -25,9 +26,12 @@ worker.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
     progress('Cruzando facturas y aplicando las reglas…', 52);
     const validation = validateDataset(dataset, hierarchy, invoices);
 
-    progress('Construyendo el Excel de alertas…', 80);
+    progress('Revisando ortografía y espacios…', 72);
+    const orthographyAlerts = generateOrthographyAlerts(dataset);
+
+    progress('Construyendo el Excel de alertas…', 86);
     const generatedAt = new Date();
-    const outputBuffer = buildOutputWorkbook(dataset, validation, generatedAt);
+    const outputBuffer = buildOutputWorkbook(dataset, validation, generatedAt, orthographyAlerts);
 
     progress('Análisis completado.', 100);
     const payload: WorkerResult = {

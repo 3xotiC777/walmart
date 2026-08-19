@@ -1,15 +1,16 @@
 import * as XLSX from 'xlsx';
 import { describe, expect, it } from 'vitest';
 import { buildOutputWorkbook } from './exportWorkbook';
+import { generateOrthographyAlerts } from './orthography';
 import { validateDataset } from './rules';
 import { makeDataset, TEST_HIERARCHY } from './testHelpers';
 
 describe('Excel de salida', () => {
-  it('genera las tres hojas requeridas y conserva los identificadores', () => {
+  it('genera las cuatro hojas requeridas y conserva los identificadores', () => {
     const dataset = makeDataset([
       { codiGo_barras: '00123', Descripcion: 'PRODUCTO MARCA' },
       { codiGo_barras: '00123', Descripcion: ' PRODUCTO MARCA ' },
-      { codiGo_barras: '00123', Descripcion: 'OTRO PRODUCTO MARCA' },
+      { codiGo_barras: '00123', Descripcion: 'PRODUCTO MARCAA' },
     ]);
     const validation = validateDataset(dataset, TEST_HIERARCHY, {
       sourceFile: 'facturas.xlsx',
@@ -18,10 +19,11 @@ describe('Excel de salida', () => {
         'ID-3': ['https://example.com/factura-1.jpg', 'https://example.com/factura-2.jpg'],
       },
     });
-    const output = buildOutputWorkbook(dataset, validation, new Date('2026-08-18T12:00:00Z'));
+    const orthographyAlerts = generateOrthographyAlerts(dataset);
+    const output = buildOutputWorkbook(dataset, validation, new Date('2026-08-18T12:00:00Z'), orthographyAlerts);
     const workbook = XLSX.read(output, { type: 'array' });
 
-    expect(workbook.SheetNames).toEqual(['Resumen', 'Alertas', 'Registros_a_revisar']);
+    expect(workbook.SheetNames).toEqual(['Resumen', 'Alertas', 'Registros_a_revisar', 'Alertas_Ortografia']);
     const summary = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumen, { header: 1 });
     expect(summary[11]).toEqual(['Regla', 'Nombre', 'Estado', 'Registros afectados', 'Alertas', 'Descripción']);
     expect(summary.find((row) => row[0] === 'R01')?.slice(3, 5)).toEqual([3, 1]);
@@ -38,6 +40,13 @@ describe('Excel de salida', () => {
     const alertRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas);
     expect(alertRows[0].Foto_Factura).toBe('https://example.com/factura-1.jpg\nhttps://example.com/factura-2.jpg');
     expect(workbook.Sheets.Alertas.Q2.l?.Target).toBe('https://example.com/factura-1.jpg');
+    const orthography = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas_Ortografia);
+    expect(orthography).toHaveLength(2);
+    expect(orthography[1]).toMatchObject({
+      Descripcion: 'PRODUCTO MARCAA',
+      'Motivo de Alerta': 'Texto/Ortografía',
+      'Descripcion correcta': 'PRODUCTO MARCA',
+    });
     const reviewed = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Registros_a_revisar);
     expect(reviewed).toHaveLength(1);
     expect(reviewed[0].codiGo_barras).toBe('00123');

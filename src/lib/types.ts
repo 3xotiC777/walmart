@@ -19,6 +19,19 @@ export interface InvoiceCatalog {
   totalImages: number;
 }
 
+export interface OrthographyAlert {
+  sourceRow: number;
+  fields: {
+    Marca_Wm: string;
+    Tipo_Marca: string;
+    Descripcion: string;
+    'Canasto Wm': string;
+  };
+  reason: string;
+  probability: string;
+  correctedDescription: string;
+}
+
 export interface HierarchyEntry {
   producto: string;
   categoria: string;

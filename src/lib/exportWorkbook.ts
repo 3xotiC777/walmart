@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { SourceDataset, ValidationResult } from './types';
+import type { OrthographyAlert, SourceDataset, ValidationResult } from './types';
 
 function setColumns(sheet: XLSX.WorkSheet, widths: number[]) {
   sheet['!cols'] = widths.map((wch) => ({ wch }));
@@ -13,6 +13,7 @@ export function buildOutputWorkbook(
   dataset: SourceDataset,
   result: ValidationResult,
   generatedAt = new Date(),
+  orthographyAlerts: OrthographyAlert[] = [],
 ): ArrayBuffer {
   const workbook = XLSX.utils.book_new();
   workbook.Props = {
@@ -119,6 +120,30 @@ export function buildOutputWorkbook(
   addAutofilter(reviewedSheet);
   setColumns(reviewedSheet, [16, 28, 90, 12, ...dataset.outputHeaders.map((header) => Math.min(48, Math.max(12, header.length + 2)))]);
   XLSX.utils.book_append_sheet(workbook, reviewedSheet, 'Registros_a_revisar');
+
+  const orthographyRows = orthographyAlerts.map((alert) => ({
+    Marca_Wm: alert.fields.Marca_Wm,
+    Tipo_Marca: alert.fields.Tipo_Marca,
+    Descripcion: alert.fields.Descripcion,
+    'Canasto Wm': alert.fields['Canasto Wm'],
+    'Motivo de Alerta': alert.reason,
+    'probabilidad de error': alert.probability,
+    'Descripcion correcta': alert.correctedDescription,
+  }));
+  const orthographySheet = XLSX.utils.json_to_sheet(orthographyRows, {
+    header: [
+      'Marca_Wm',
+      'Tipo_Marca',
+      'Descripcion',
+      'Canasto Wm',
+      'Motivo de Alerta',
+      'probabilidad de error',
+      'Descripcion correcta',
+    ],
+  });
+  addAutofilter(orthographySheet);
+  setColumns(orthographySheet, [24, 18, 54, 24, 28, 22, 54]);
+  XLSX.utils.book_append_sheet(workbook, orthographySheet, 'Alertas_Ortografia');
 
   const bytes = XLSX.write(workbook, {
     type: 'array',
