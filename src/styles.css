@@ -87,7 +87,7 @@ main { width: min(1180px, calc(100% - 48px)); margin: 0 auto; }
 .heading-actions { display: flex; gap: 10px; }
 .download-button { display: inline-flex; align-items: center; gap: 8px; }
 .download-button svg { width: 19px; height: 19px; }
-.metrics-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
 .metric-card { position: relative; overflow: hidden; padding: 20px; background: #fff; border: 1px solid var(--line); border-radius: 17px; box-shadow: 0 10px 24px rgba(15, 47, 93, 0.06); }
 .metric-card p { margin: 0 0 13px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .metric-card strong { color: var(--navy); font-size: 28px; letter-spacing: -0.04em; }
@@ -170,4 +170,3 @@ footer { display: flex; justify-content: space-between; gap: 20px; width: min(11
   .download-callout button { width: 100%; }
   footer { width: calc(100% - 24px); flex-direction: column; }
 }
-

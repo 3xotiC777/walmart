@@ -55,6 +55,11 @@ const AUTOMATIC_RULES: RuleDefinition[] = [
   ],
   ['R26', 'Cantidades por ID', 'La suma de cantidad_comprada debe ser igual al máximo de Cantidad_Productos.'],
   ['R27', 'Montos por ID', 'La suma de Precio_Total_Preciador debe ser igual al máximo de Monto Total Fc.'],
+  [
+    'R28',
+    'Cantidad comprada vs precio total',
+    'Si cantidad_comprada es mayor que 1, Precio_Total_Preciador no puede ser igual a Precio_Unidad.',
+  ],
 ].map(([id, name, description]) => ({
   id,
   name,
@@ -67,43 +72,49 @@ const ADDITIONAL_RULES: RuleDefinition[] = [
     id: 'EST-01',
     name: 'Campos críticos vacíos',
     status: 'Adicional',
-    description: 'Identificadores y dimensiones necesarias para validar no pueden estar vacíos.',
+    description:
+      'Revisar campos críticos vacíos: Row-Id, Id_Dn W, codiGo_barras, Descripcion, Producto_Wm, Categoria_Wm, Division_Wm, Marca_Wm, Tipo_Marca o Canasto Wm.',
   },
   {
     id: 'EST-02',
     name: 'Valores numéricos inválidos',
     status: 'Adicional',
-    description: 'Los campos numéricos usados por las reglas deben contener números válidos.',
+    description:
+      'Estas columnas deben contener números válidos y no estar vacías: Cantidad_Productos, cantidad_comprada, Precio_Unidad, Precio_Total_Preciador y Monto Total Fc.',
   },
   {
     id: 'EST-03',
     name: 'Row-Id duplicado',
     status: 'Adicional',
-    description: 'Row-Id debe identificar una única fila.',
+    description:
+      'El mismo Row-Id aparece en más de una fila; revisar si el registro está duplicado o si el identificador fue reutilizado.',
   },
   {
     id: 'JER-01',
     name: 'Producto sin referencia',
     status: 'Adicional',
-    description: 'Producto_Wm no existe en el catálogo derivado de Jerarquía.',
+    description:
+      'Producto_Wm no aparece en la columna Producto del catálogo de Jerarquía; revisar si es un producto nuevo o si debe corregirse.',
   },
   {
     id: 'JER-02',
     name: 'Categoría vs jerarquía',
     status: 'Adicional',
-    description: 'Categoria_Wm debe coincidir con la categoría esperada para Producto_Wm.',
+    description:
+      'Categoria_Wm no coincide con Categoria WM_Panel, la categoría esperada para ese Producto_Wm en Jerarquía.',
   },
   {
     id: 'JER-03',
     name: 'División vs jerarquía',
     status: 'Adicional',
-    description: 'Division_Wm debe coincidir con la división esperada para Producto_Wm.',
+    description:
+      'Division_Wm no coincide con División_wm_Panel, la división esperada para ese Producto_Wm en Jerarquía.',
   },
   {
     id: 'JER-04',
     name: 'Canasto vs jerarquía',
     status: 'Adicional',
-    description: 'Canasto Wm debe coincidir con el canasto esperado para Producto_Wm.',
+    description: 'Canasto Wm no coincide con Canasto, el valor esperado para ese Producto_Wm en Jerarquía.',
   },
 ];
 
@@ -385,6 +396,32 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
         upperLimit,
       });
     }
+  }
+
+  for (const record of dataset.records) {
+    const quantity = numericValue(record.fields.cantidad_comprada);
+    const unitPrice = numericValue(record.fields.Precio_Unidad);
+    const totalPrice = numericValue(record.fields.Precio_Total_Preciador);
+    if (
+      quantity === null ||
+      unitPrice === null ||
+      totalPrice === null ||
+      quantity <= 1 ||
+      Math.abs(totalPrice - unitPrice) > 0.01
+    ) {
+      continue;
+    }
+
+    addAlert({
+      ...baseAlert(record, 'R28'),
+      key: displayValue(record.fields['Row-Id']) || `Fila ${record.excelRow}`,
+      field: 'cantidad_comprada / Precio_Unidad / Precio_Total_Preciador',
+      observed: `Cantidad: ${displayValue(record.fields.cantidad_comprada)} | Precio unitario: ${displayValue(
+        record.fields.Precio_Unidad,
+      )} | Precio total: ${displayValue(record.fields.Precio_Total_Preciador)}`,
+      expected: 'Con cantidad mayor que 1, el precio total debe ser distinto del precio unitario',
+      detail: `Se compraron ${quantity} unidades, pero Precio_Total_Preciador (${totalPrice}) es igual a Precio_Unidad (${unitPrice}).`,
+    });
   }
 
   const surveyGroups = new Map<string, SourceRecord[]>();

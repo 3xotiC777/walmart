@@ -19,6 +19,9 @@ describe('Excel de salida', () => {
     const summary = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumen, { header: 1 });
     expect(summary[11]).toEqual(['Regla', 'Nombre', 'Estado', 'Registros afectados', 'Alertas', 'Descripción']);
     expect(summary.find((row) => row[0] === 'R01')?.slice(3, 5)).toEqual([3, 1]);
+    expect(String(summary.find((row) => row[0] === 'EST-02')?.[5])).toContain('Precio_Total_Preciador');
+    expect(String(summary.find((row) => row[0] === 'JER-01')?.[5])).toContain('columna Producto');
+    expect(summary.some((row) => row[0] === 'R28')).toBe(true);
     const alertHeaders = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Alertas, { header: 1 })[0];
     expect(alertHeaders).toContain('Cuartil_1');
     expect(alertHeaders).toContain('Cuartil_3');

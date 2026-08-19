@@ -118,6 +118,19 @@ describe('motor de validación PQM', () => {
     expect(result.alerts.filter((alert) => alert.ruleId === 'R27').map((alert) => alert.sourceRow)).toEqual([4, 5]);
   });
 
+  it('aplica R28 cuando una compra múltiple conserva el precio total igual al unitario', () => {
+    const dataset = makeDataset([
+      { cantidad_comprada: 1, Precio_Unidad: 100, Precio_Total_Preciador: 100 },
+      { cantidad_comprada: 2, Precio_Unidad: 100, Precio_Total_Preciador: 100 },
+      { cantidad_comprada: 2, Precio_Unidad: 100, Precio_Total_Preciador: 100.005 },
+      { cantidad_comprada: 2, Precio_Unidad: 100, Precio_Total_Preciador: 200 },
+    ]);
+
+    const alerts = validateDataset(dataset, TEST_HIERARCHY).alerts.filter((alert) => alert.ruleId === 'R28');
+
+    expect(alerts.map((alert) => alert.sourceRow)).toEqual([3, 4]);
+  });
+
   it('aplica la jerarquía exacta y mantiene la regla 21 como visual', () => {
     const dataset = makeDataset([
       { Producto_Wm: 'PRODUCTO A', Categoria_Wm: 'OTRA', Division_Wm: 'OTRA', 'Canasto Wm': 'OTRO' },

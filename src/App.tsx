@@ -193,6 +193,9 @@ export default function App() {
 
   const totalPages = Math.max(1, Math.ceil(filteredAlerts.length / PAGE_SIZE));
   const paginatedAlerts = filteredAlerts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const alertPercent = result?.metrics.totalRecords
+    ? (result.metrics.totalAlerts / result.metrics.totalRecords) * 100
+    : 0;
   const rulesWithAlerts = result?.ruleSummaries.filter((rule) => rule.alertCount > 0) ?? [];
   const displayedRules =
     result?.ruleSummaries.filter((rule) => showAllRules || rule.alertCount > 0 || rule.id === 'R21') ?? [];
@@ -224,7 +227,7 @@ export default function App() {
               Carga el archivo del panel, identifica los registros que necesitan atención y descarga un Excel listo para el equipo de validación.
             </p>
             <div className="hero-facts" aria-label="Características">
-              <span><CheckIcon /> 26 controles automáticos</span>
+              <span><CheckIcon /> 27 controles automáticos</span>
               <span><CheckIcon /> Jerarquía integrada</span>
               <span><CheckIcon /> Sin subir datos</span>
             </div>
@@ -316,10 +319,9 @@ export default function App() {
 
             <div className="metrics-grid">
               <MetricCard label="Registros totales" value={numberFormatter.format(result.metrics.totalRecords)} tone="blue" />
-              <MetricCard label="A revisar" value={numberFormatter.format(result.metrics.reviewRecords)} tone="orange" />
+              <MetricCard label="Alertas" value={numberFormatter.format(result.metrics.totalAlerts)} tone="orange" />
               <MetricCard label="Sin alertas" value={numberFormatter.format(result.metrics.okRecords)} tone="green" />
-              <MetricCard label="Porcentaje a revisar" value={`${percentFormatter.format(result.metrics.reviewPercent)}%`} tone="yellow" />
-              <MetricCard label="Eventos de alerta" value={numberFormatter.format(result.metrics.totalAlerts)} tone="navy" />
+              <MetricCard label="Porcentaje de alertas" value={`${percentFormatter.format(alertPercent)}%`} tone="yellow" />
             </div>
 
             <div className="results-panel">
