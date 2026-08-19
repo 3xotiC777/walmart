@@ -21,6 +21,9 @@ export interface InvoiceCatalog {
 
 export interface OrthographyAlert {
   sourceRow: number;
+  rowId: string;
+  surveyId: string;
+  barcode: string;
   fields: {
     Marca_Wm: string;
     Tipo_Marca: string;
@@ -56,6 +59,13 @@ export interface RuleDefinition {
   status: RuleStatus;
   description: string;
 }
+
+export const ORTHOGRAPHY_RULE = {
+  id: 'ORT-01',
+  name: 'Ortografía y espacios',
+  status: 'Adicional',
+  description: 'Detecta posibles errores de texto y espacios sobrantes en la descripción.',
+} as const satisfies RuleDefinition;
 
 export interface AlertRecord {
   ruleId: string;
@@ -105,6 +115,7 @@ export interface ValidationResult {
 export interface WorkerResult {
   metrics: ValidationMetrics;
   alerts: AlertRecord[];
+  orthographyAlerts: AlertRecord[];
   ruleSummaries: RuleSummary[];
   sourceFile: string;
   invoiceFile: string;

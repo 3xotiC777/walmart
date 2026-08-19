@@ -240,6 +240,9 @@ export function generateOrthographyAlerts(
     ) as OrthographyAlert['fields'];
     alerts.push({
       sourceRow: record.excelRow,
+      rowId: cellText(record.fields['Row-Id']),
+      surveyId: cellText(record.fields['Id_Dn W']),
+      barcode: cellText(record.fields.codiGo_barras),
       fields: selectedFields,
       reason: reasons.join(' + '),
       probability: correction && reasons.includes('Texto/Ortografía') ? correction.probability : '100%',

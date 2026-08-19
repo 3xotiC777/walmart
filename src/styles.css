@@ -605,3 +605,15 @@ main { width: min(1240px, calc(100% - 40px)); }
   .invoice-gallery { grid-template-columns: 1fr; max-height: calc(100vh - 220px); padding: 12px; }
   .invoice-figure > a { min-height: 280px; }
 }
+
+/* Five-card result summary with a dedicated orthography signal. */
+.metrics-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.metric-purple { color: #7c3aed; }
+
+@media (max-width: 1040px) {
+  .metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .metrics-grid { grid-template-columns: 1fr; }
+}

@@ -20,6 +20,9 @@ describe('alertas de ortografía y espacios', () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toMatchObject({
       sourceRow: 4,
+      rowId: 'ROW-3',
+      surveyId: 'ID-3',
+      barcode: '001',
       reason: 'Texto/Ortografía',
       correctedDescription: 'PRODUCTO MARCA',
     });

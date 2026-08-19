@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, RefObject } from 'react';
-import type { AlertRecord, WorkerMessage, WorkerResult } from './lib/types';
+import { ORTHOGRAPHY_RULE } from './lib/types';
+import type { AlertRecord, RuleSummary, WorkerMessage, WorkerResult } from './lib/types';
 
 type AppStatus = 'idle' | 'processing' | 'success' | 'error';
 
@@ -260,10 +261,24 @@ export default function App() {
     }
   };
 
+  const allAlerts = useMemo(
+    () => result ? [...result.alerts, ...result.orthographyAlerts] : [],
+    [result],
+  );
+  const allRuleSummaries = useMemo(() => {
+    if (!result) return [];
+    const orthographySummary: RuleSummary = {
+      ...ORTHOGRAPHY_RULE,
+      affectedRows: result.orthographyAlerts.length,
+      alertCount: result.orthographyAlerts.length,
+    };
+    return [...result.ruleSummaries, orthographySummary];
+  }, [result]);
+
   const filteredAlerts = useMemo(() => {
     if (!result) return [];
     const query = search.trim().toLocaleUpperCase('es');
-    return result.alerts.filter((alert) => {
+    return allAlerts.filter((alert) => {
       if (ruleFilter && alert.ruleId !== ruleFilter) return false;
       if (!query) return true;
       return [
@@ -276,16 +291,16 @@ export default function App() {
         alert.detail,
       ].some((value) => value.toLocaleUpperCase('es').includes(query));
     });
-  }, [result, ruleFilter, search]);
+  }, [allAlerts, result, ruleFilter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredAlerts.length / PAGE_SIZE));
   const paginatedAlerts = filteredAlerts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const alertPercent = result?.metrics.totalRecords
     ? (result.metrics.totalAlerts / result.metrics.totalRecords) * 100
     : 0;
-  const rulesWithAlerts = result?.ruleSummaries.filter((rule) => rule.alertCount > 0) ?? [];
+  const rulesWithAlerts = allRuleSummaries.filter((rule) => rule.alertCount > 0);
   const displayedRules =
-    result?.ruleSummaries.filter((rule) => showAllRules || rule.alertCount > 0 || rule.id === 'R21') ?? [];
+    allRuleSummaries.filter((rule) => showAllRules || rule.alertCount > 0 || rule.id === 'R21');
 
   useEffect(() => setPage(1), [search, ruleFilter]);
   useEffect(() => {
@@ -432,6 +447,7 @@ export default function App() {
             <div className="metrics-grid">
               <MetricCard label="Registros totales" value={numberFormatter.format(result.metrics.totalRecords)} tone="blue" />
               <MetricCard label="Alertas" value={numberFormatter.format(result.metrics.totalAlerts)} tone="orange" />
+              <MetricCard label="Alertas ortográficas" value={numberFormatter.format(result.orthographyAlerts.length)} tone="purple" />
               <MetricCard label="Sin alertas" value={numberFormatter.format(result.metrics.okRecords)} tone="green" />
               <MetricCard label="Porcentaje de alertas" value={`${percentFormatter.format(alertPercent)}%`} tone="yellow" />
             </div>

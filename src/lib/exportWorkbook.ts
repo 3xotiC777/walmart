@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { ORTHOGRAPHY_RULE } from './types';
 import type { OrthographyAlert, SourceDataset, ValidationResult } from './types';
 
 function setColumns(sheet: XLSX.WorkSheet, widths: number[]) {
@@ -35,6 +36,7 @@ export function buildOutputWorkbook(
     ['Registros sin alertas', result.metrics.okRecords],
     ['Porcentaje a revisar', result.metrics.reviewPercent / 100],
     ['Eventos de alerta', result.metrics.totalAlerts],
+    ['Alertas ortográficas', orthographyAlerts.length],
     ['', ''],
     ['Regla', 'Nombre', 'Estado', 'Registros afectados', 'Alertas', 'Descripción'],
     ...result.ruleSummaries.map((rule) => [
@@ -45,6 +47,14 @@ export function buildOutputWorkbook(
       rule.alertCount,
       rule.description,
     ]),
+    [
+      ORTHOGRAPHY_RULE.id,
+      ORTHOGRAPHY_RULE.name,
+      ORTHOGRAPHY_RULE.status,
+      orthographyAlerts.length,
+      orthographyAlerts.length,
+      ORTHOGRAPHY_RULE.description,
+    ],
   ];
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows, { cellDates: true });
   summarySheet['!merges'] = [XLSX.utils.decode_range('A1:F1')];
