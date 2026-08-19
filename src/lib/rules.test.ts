@@ -27,6 +27,27 @@ describe('motor de validación PQM', () => {
     });
   });
 
+  it('adjunta todas las facturas del Id_Dn W a una alerta R01', () => {
+    const dataset = makeDataset([
+      { 'Id_Dn W': 'ref-10', codiGo_barras: '001', Descripcion: 'PRODUCTO MARCA' },
+      { 'Id_Dn W': 'REF-10', codiGo_barras: '001', Descripcion: 'PRODUCTO MARCA' },
+      { 'Id_Dn W': ' REF-10 ', codiGo_barras: '001', Descripcion: 'OTRO PRODUCTO' },
+    ]);
+    const result = validateDataset(dataset, TEST_HIERARCHY, {
+      sourceFile: 'facturas.xlsx',
+      totalImages: 2,
+      urlsByRef: {
+        'REF-10': ['https://example.com/factura-1.jpg', 'https://example.com/factura-2.jpg'],
+      },
+    });
+
+    const alert = result.alerts.find((item) => item.ruleId === 'R01');
+    expect(alert?.invoiceUrls).toEqual([
+      'https://example.com/factura-1.jpg',
+      'https://example.com/factura-2.jpg',
+    ]);
+  });
+
   it('alerta todas las filas cuando los valores están empatados y no existe mayoría', () => {
     const dataset = makeDataset([
       { codiGo_barras: '001', Descripcion: 'DESCRIPCION A' },

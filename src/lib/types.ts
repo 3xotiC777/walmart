@@ -13,6 +13,12 @@ export interface SourceDataset {
   records: SourceRecord[];
 }
 
+export interface InvoiceCatalog {
+  sourceFile: string;
+  urlsByRef: Record<string, string[]>;
+  totalImages: number;
+}
+
 export interface HierarchyEntry {
   producto: string;
   categoria: string;
@@ -55,6 +61,7 @@ export interface AlertRecord {
   thirdQuartile?: number;
   interquartileRange?: number;
   upperLimit?: number;
+  invoiceUrls?: string[];
 }
 
 export interface RuleSummary extends RuleDefinition {
@@ -87,6 +94,8 @@ export interface WorkerResult {
   alerts: AlertRecord[];
   ruleSummaries: RuleSummary[];
   sourceFile: string;
+  invoiceFile: string;
+  invoiceImages: number;
   generatedAt: string;
   hierarchyProducts: number;
   outputBuffer: ArrayBuffer;
@@ -96,3 +105,10 @@ export type WorkerMessage =
   | { type: 'progress'; message: string; progress: number }
   | { type: 'result'; payload: WorkerResult }
   | { type: 'error'; message: string };
+
+export interface WorkerRequest {
+  sourceBuffer: ArrayBuffer;
+  sourceFileName: string;
+  invoiceBuffer: ArrayBuffer;
+  invoiceFileName: string;
+}

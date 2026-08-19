@@ -2,9 +2,9 @@
 
 import hierarchyData from '../data/hierarchy.json';
 import { buildOutputWorkbook } from '../lib/exportWorkbook';
-import { parseWorkbook } from '../lib/parser';
+import { parseInvoiceWorkbook, parseWorkbook } from '../lib/parser';
 import { validateDataset } from '../lib/rules';
-import type { HierarchyCatalog, WorkerMessage, WorkerResult } from '../lib/types';
+import type { HierarchyCatalog, WorkerMessage, WorkerRequest, WorkerResult } from '../lib/types';
 
 const worker = self as unknown as DedicatedWorkerGlobalScope;
 const hierarchy = hierarchyData as HierarchyCatalog;
@@ -14,15 +14,18 @@ function progress(message: string, value: number) {
   worker.postMessage(response);
 }
 
-worker.addEventListener('message', (event: MessageEvent<{ buffer: ArrayBuffer; fileName: string }>) => {
+worker.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
   try {
-    progress('Leyendo el libro de Excel…', 15);
-    const dataset = parseWorkbook(event.data.buffer, event.data.fileName);
+    progress('Leyendo el archivo de facturas…', 12);
+    const invoices = parseInvoiceWorkbook(event.data.invoiceBuffer, event.data.invoiceFileName);
 
-    progress('Aplicando las reglas de validación…', 45);
-    const validation = validateDataset(dataset, hierarchy);
+    progress('Leyendo el panel PQM…', 28);
+    const dataset = parseWorkbook(event.data.sourceBuffer, event.data.sourceFileName);
 
-    progress('Construyendo el Excel de alertas…', 78);
+    progress('Cruzando facturas y aplicando las reglas…', 52);
+    const validation = validateDataset(dataset, hierarchy, invoices);
+
+    progress('Construyendo el Excel de alertas…', 80);
     const generatedAt = new Date();
     const outputBuffer = buildOutputWorkbook(dataset, validation, generatedAt);
 
@@ -32,6 +35,8 @@ worker.addEventListener('message', (event: MessageEvent<{ buffer: ArrayBuffer; f
       alerts: validation.alerts,
       ruleSummaries: validation.ruleSummaries,
       sourceFile: dataset.sourceFile,
+      invoiceFile: invoices.sourceFile,
+      invoiceImages: invoices.totalImages,
       generatedAt: generatedAt.toISOString(),
       hierarchyProducts: hierarchy.metadata.products,
       outputBuffer,

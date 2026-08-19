@@ -68,6 +68,7 @@ export function buildOutputWorkbook(
     Cuartil_3: alert.thirdQuartile ?? null,
     Rango_Intercuartil: alert.interquartileRange ?? null,
     Limite_Superior: alert.upperLimit ?? null,
+    Foto_Factura: alert.invoiceUrls?.join('\n') ?? '',
   }));
   const alertsSheet = XLSX.utils.json_to_sheet(alertRows, {
     header: [
@@ -87,10 +88,17 @@ export function buildOutputWorkbook(
       'Cuartil_3',
       'Rango_Intercuartil',
       'Limite_Superior',
+      'Foto_Factura',
     ],
   });
+  result.alerts.forEach((alert, index) => {
+    const firstInvoice = alert.invoiceUrls?.[0];
+    if (!firstInvoice) return;
+    const cell = alertsSheet[XLSX.utils.encode_cell({ r: index + 1, c: 16 })];
+    if (cell) cell.l = { Target: firstInvoice, Tooltip: 'Abrir la primera factura asociada' };
+  });
   addAutofilter(alertsSheet);
-  setColumns(alertsSheet, [12, 30, 12, 20, 16, 18, 46, 44, 24, 34, 46, 72, 16, 16, 20, 18]);
+  setColumns(alertsSheet, [12, 30, 12, 20, 16, 18, 46, 44, 24, 34, 46, 72, 16, 16, 20, 18, 70]);
   XLSX.utils.book_append_sheet(workbook, alertsSheet, 'Alertas');
 
   const reviewedHeader = [

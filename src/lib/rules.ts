@@ -1,6 +1,7 @@
 import type {
   AlertRecord,
   HierarchyCatalog,
+  InvoiceCatalog,
   RuleDefinition,
   RuleSummary,
   SourceDataset,
@@ -218,7 +219,11 @@ function baseAlert(record: SourceRecord, ruleId: string): Omit<AlertRecord, 'key
   };
 }
 
-export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCatalog): ValidationResult {
+export function validateDataset(
+  dataset: SourceDataset,
+  hierarchy: HierarchyCatalog,
+  invoices?: InvoiceCatalog,
+): ValidationResult {
   const alertsByKey = new Map<string, AlertRecord>();
   const affectedRowsByRule = new Map<string, Set<number>>();
 
@@ -497,9 +502,12 @@ export function validateDataset(dataset: SourceDataset, hierarchy: HierarchyCata
     }
   }
 
-  const alerts = [...alertsByKey.values()].sort(
-    (a, b) => a.sourceRow - b.sourceRow || a.ruleId.localeCompare(b.ruleId, 'es'),
-  );
+  const alerts = [...alertsByKey.values()]
+    .map((alert) => ({
+      ...alert,
+      invoiceUrls: invoices?.urlsByRef[normalizeText(alert.surveyId)] ?? [],
+    }))
+    .sort((a, b) => a.sourceRow - b.sourceRow || a.ruleId.localeCompare(b.ruleId, 'es'));
   const alertsPerRow = new Map<number, AlertRecord[]>();
   for (const alert of alerts) {
     const rowAlerts = alertsPerRow.get(alert.sourceRow) ?? [];

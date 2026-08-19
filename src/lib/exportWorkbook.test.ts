@@ -11,7 +11,13 @@ describe('Excel de salida', () => {
       { codiGo_barras: '00123', Descripcion: ' PRODUCTO MARCA ' },
       { codiGo_barras: '00123', Descripcion: 'OTRO PRODUCTO MARCA' },
     ]);
-    const validation = validateDataset(dataset, TEST_HIERARCHY);
+    const validation = validateDataset(dataset, TEST_HIERARCHY, {
+      sourceFile: 'facturas.xlsx',
+      totalImages: 2,
+      urlsByRef: {
+        'ID-3': ['https://example.com/factura-1.jpg', 'https://example.com/factura-2.jpg'],
+      },
+    });
     const output = buildOutputWorkbook(dataset, validation, new Date('2026-08-18T12:00:00Z'));
     const workbook = XLSX.read(output, { type: 'array' });
 
@@ -26,8 +32,12 @@ describe('Excel de salida', () => {
     expect(alertHeaders).toContain('Cuartil_1');
     expect(alertHeaders).toContain('Cuartil_3');
     expect(alertHeaders).toContain('Rango_Intercuartil');
+    expect(alertHeaders.indexOf('Foto_Factura')).toBe(alertHeaders.indexOf('Limite_Superior') + 1);
     expect(alertHeaders).not.toContain('Promedio');
     expect(alertHeaders).not.toContain('Desviacion_Estandar');
+    const alertRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas);
+    expect(alertRows[0].Foto_Factura).toBe('https://example.com/factura-1.jpg\nhttps://example.com/factura-2.jpg');
+    expect(workbook.Sheets.Alertas.Q2.l?.Target).toBe('https://example.com/factura-1.jpg');
     const reviewed = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Registros_a_revisar);
     expect(reviewed).toHaveLength(1);
     expect(reviewed[0].codiGo_barras).toBe('00123');

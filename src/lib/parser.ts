@@ -1,7 +1,9 @@
 import * as XLSX from 'xlsx';
-import type { CellValue, SourceDataset, SourceRecord } from './types';
+import type { CellValue, InvoiceCatalog, SourceDataset, SourceRecord } from './types';
 
 export const SOURCE_SHEET = 'pqm consolidado';
+export const INVOICE_SHEET = 'Data';
+export const INVOICE_REQUIRED_HEADERS = ['RefID_STG', 'URL_DN'] as const;
 
 export const REQUIRED_HEADERS = [
   'Row-Id',
@@ -59,6 +61,23 @@ function formattedIdentifier(
   if (cell.t === 's' || cell.t === 'str') return String(cell.v ?? '');
   if (cell.w !== undefined && cell.w !== '') return String(cell.w);
   return fallback;
+}
+
+function normalizeIdentifier(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number' && Number.isInteger(value)) return String(value);
+  return String(value).trim().toUpperCase();
+}
+
+function validInvoiceUrl(value: unknown): string | null {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  try {
+    const url = new URL(text);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
 }
 
 export function parseWorkbook(buffer: ArrayBuffer, sourceFile: string): SourceDataset {
@@ -129,4 +148,73 @@ export function parseWorkbook(buffer: ArrayBuffer, sourceFile: string): SourceDa
   }
 
   return { sourceFile, headers, outputHeaders, records };
+}
+
+export function parseInvoiceWorkbook(buffer: ArrayBuffer, sourceFile: string): InvoiceCatalog {
+  let workbook: XLSX.WorkBook;
+
+  try {
+    workbook = XLSX.read(buffer, {
+      type: 'array',
+      cellText: true,
+      dense: false,
+    });
+  } catch {
+    throw new WorkbookValidationError(
+      'No fue posible leer el archivo de facturas. Verifica que sea un Excel .xlsx válido.',
+    );
+  }
+
+  const sheet = workbook.Sheets[INVOICE_SHEET];
+  if (!sheet) {
+    throw new WorkbookValidationError(
+      `El archivo de facturas no contiene la hoja "${INVOICE_SHEET}". Hojas disponibles: ${workbook.SheetNames.join(', ') || 'ninguna'}.`,
+    );
+  }
+
+  const matrix = XLSX.utils.sheet_to_json<CellValue[]>(sheet, {
+    header: 1,
+    raw: true,
+    defval: null,
+    blankrows: true,
+  });
+  if (matrix.length < 2) {
+    throw new WorkbookValidationError(`La hoja "${INVOICE_SHEET}" no contiene facturas para relacionar.`);
+  }
+
+  const headers = matrix[0].map((value) => String(value ?? '').trim());
+  const missing = INVOICE_REQUIRED_HEADERS.filter((header) => !headers.includes(header));
+  if (missing.length > 0) {
+    throw new WorkbookValidationError(`Al archivo de facturas le faltan columnas requeridas: ${missing.join(', ')}.`);
+  }
+
+  const refColumn = headers.indexOf('RefID_STG');
+  const urlColumn = headers.indexOf('URL_DN');
+  const urlsByRef = new Map<string, Set<string>>();
+
+  for (let matrixIndex = 1; matrixIndex < matrix.length; matrixIndex += 1) {
+    const excelRow = matrixIndex + 1;
+    const row = matrix[matrixIndex] ?? [];
+    const formattedRef = formattedIdentifier(sheet, excelRow, refColumn, row[refColumn]);
+    const refId = normalizeIdentifier(formattedRef);
+    const url = validInvoiceUrl(row[urlColumn]);
+    if (!refId || !url) continue;
+    const urls = urlsByRef.get(refId) ?? new Set<string>();
+    urls.add(url);
+    urlsByRef.set(refId, urls);
+  }
+
+  if (urlsByRef.size === 0) {
+    throw new WorkbookValidationError(
+      'El archivo de facturas no contiene combinaciones válidas de RefID_STG y URL_DN.',
+    );
+  }
+
+  const entries: Array<[string, string[]]> = [...urlsByRef.entries()]
+    .map(([refId, urls]) => [refId, [...urls]]);
+  return {
+    sourceFile,
+    urlsByRef: Object.fromEntries(entries),
+    totalImages: entries.reduce((total, [, urls]) => total + urls.length, 0),
+  };
 }
