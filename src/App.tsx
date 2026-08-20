@@ -295,9 +295,7 @@ export default function App() {
 
   const totalPages = Math.max(1, Math.ceil(filteredAlerts.length / PAGE_SIZE));
   const paginatedAlerts = filteredAlerts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const alertPercent = result?.metrics.totalRecords
-    ? (result.metrics.totalAlerts / result.metrics.totalRecords) * 100
-    : 0;
+  const alertPercent = result?.metrics.reviewPercent ?? 0;
   const rulesWithAlerts = allRuleSummaries.filter((rule) => rule.alertCount > 0);
   const displayedRules =
     allRuleSummaries.filter((rule) => showAllRules || rule.alertCount > 0 || rule.id === 'R21');
@@ -446,7 +444,7 @@ export default function App() {
 
             <div className="metrics-grid">
               <MetricCard label="Registros totales" value={numberFormatter.format(result.metrics.totalRecords)} tone="blue" />
-              <MetricCard label="Alertas" value={numberFormatter.format(result.metrics.totalAlerts)} tone="orange" />
+              <MetricCard label="Alertas" value={numberFormatter.format(result.metrics.reviewRecords)} tone="orange" />
               <MetricCard label="Alertas ortográficas" value={numberFormatter.format(result.orthographyAlerts.length)} tone="purple" />
               <MetricCard label="Sin alertas" value={numberFormatter.format(result.metrics.okRecords)} tone="green" />
               <MetricCard label="Porcentaje de alertas" value={`${percentFormatter.format(alertPercent)}%`} tone="yellow" />
@@ -492,7 +490,7 @@ export default function App() {
                 <label className="search-field">
                   <SearchIcon />
                   <span className="visually-hidden">Buscar alertas</span>
-                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar código, descripción, ID…" />
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar Row-Id, código, descripción, ID…" />
                 </label>
                 <label className="select-field">
                   <span className="visually-hidden">Filtrar por regla</span>
@@ -504,12 +502,13 @@ export default function App() {
               </div>
               <div className="table-scroll">
                 <table className="alerts-table">
-                  <thead><tr><th>Regla</th><th>Fila</th><th>Código</th><th>Descripción</th><th>Motivo</th><th>Factura</th></tr></thead>
+                  <thead><tr><th>Regla</th><th>Fila</th><th>Row-Id</th><th>Código</th><th>Descripción</th><th>Motivo</th><th>Factura</th></tr></thead>
                   <tbody>
                     {paginatedAlerts.map((alert: AlertRecord) => (
                       <tr key={`${alert.ruleId}-${alert.sourceRow}`}>
                         <td><span className="rule-code alert-code">{alert.ruleId}</span></td>
                         <td>{numberFormatter.format(alert.sourceRow)}</td>
+                        <td className="code-cell">{alert.rowId || '—'}</td>
                         <td className="code-cell">{alert.barcode || '—'}</td>
                         <td>{alert.description || '—'}</td>
                         <td>{alert.detail}</td>
@@ -530,7 +529,7 @@ export default function App() {
                       </tr>
                     ))}
                     {paginatedAlerts.length === 0 && (
-                      <tr><td className="empty-table" colSpan={6}>No hay alertas que coincidan con los filtros.</td></tr>
+                      <tr><td className="empty-table" colSpan={7}>No hay alertas que coincidan con los filtros.</td></tr>
                     )}
                   </tbody>
                 </table>
