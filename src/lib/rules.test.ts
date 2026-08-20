@@ -152,6 +152,43 @@ describe('motor de validación PQM', () => {
     expect(alerts.map((alert) => alert.sourceRow)).toEqual([3, 4]);
   });
 
+  it('cuenta una sola vez cada registro aunque tenga varias reglas de alerta', () => {
+    const dataset = makeDataset([
+      { Producto_Wm: 'DESCONOCIDO', Marca_Wm: 'BADIA', Descripcion: 'CANELA MOLIDA 12GR' },
+    ]);
+
+    const result = validateDataset(dataset, TEST_HIERARCHY);
+
+    expect(result.alerts.map((alert) => alert.ruleId)).toEqual(['JER-01', 'R15']);
+    expect(result.metrics.reviewRecords).toBe(1);
+    expect(result.metrics.totalAlerts).toBe(2);
+    expect(result.metrics.okRecords).toBe(0);
+  });
+
+  it('aplica R29 únicamente a la descripción con gramaje sospechoso frente a la mayoría', () => {
+    const dataset = makeDataset([
+      { codiGo_barras: 'G1', Descripcion: 'ARROZ MARCA 500GR' },
+      { codiGo_barras: 'G1', Descripcion: 'ARROZ MARCA 500GR' },
+      { codiGo_barras: 'G1', Descripcion: 'ARROZ MARCA 500G' },
+      { codiGo_barras: 'G2', Descripcion: 'LECHE MARCA 1L' },
+      { codiGo_barras: 'G2', Descripcion: 'LECHE MARCA 2L' },
+      { codiGo_barras: 'OTRO', Descripcion: 'PRODUCTO MARCA SIN MEDIDA' },
+    ]);
+
+    const result = validateDataset(dataset, TEST_HIERARCHY);
+    const alerts = result.alerts.filter((alert) => alert.ruleId === 'R29');
+
+    expect(alerts.map((alert) => alert.sourceRow)).toEqual([4, 5, 6]);
+    expect(alerts[0]).toMatchObject({
+      observed: 'ARROZ MARCA 500G',
+      expected: 'ARROZ MARCA 500GR',
+    });
+    expect(result.ruleSummaries.find((rule) => rule.id === 'R29')).toMatchObject({
+      affectedRows: 5,
+      alertCount: 3,
+    });
+  });
+
   it('aplica la jerarquía exacta y mantiene la regla 21 como visual', () => {
     const dataset = makeDataset([
       { Producto_Wm: 'PRODUCTO A', Categoria_Wm: 'OTRA', Division_Wm: 'OTRA', 'Canasto Wm': 'OTRO' },

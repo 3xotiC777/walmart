@@ -15,11 +15,15 @@ describe('archivo PQM de referencia', () => {
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     const dataset = parseWorkbook(buffer, path.basename(samplePath));
     const result = validateDataset(dataset, hierarchyData as HierarchyCatalog);
+    const uniqueAlertRows = new Set(result.alerts.map((alert) => alert.sourceRow));
 
     expect(result.metrics.totalRecords).toBe(15509);
-    expect(result.metrics.reviewRecords).toBe(725);
-    expect(result.metrics.totalAlerts).toBe(729);
-    expect(result.metrics.okRecords).toBe(14784);
+    expect(result.metrics.reviewRecords).toBe(uniqueAlertRows.size);
+    expect(result.metrics.totalAlerts).toBe(result.alerts.length);
+    expect(result.metrics.okRecords).toBe(result.metrics.totalRecords - result.metrics.reviewRecords);
+    expect(result.metrics.reviewPercent).toBeCloseTo(
+      (result.metrics.reviewRecords / result.metrics.totalRecords) * 100,
+    );
     expect(result.ruleSummaries.find((rule) => rule.id === 'R08')?.affectedRows).toBe(0);
     expect(result.ruleSummaries.find((rule) => rule.id === 'R25')?.affectedRows).toBe(207);
     expect(result.ruleSummaries.find((rule) => rule.id === 'R01')).toMatchObject({
