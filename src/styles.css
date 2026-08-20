@@ -121,8 +121,8 @@ tbody tr:hover td { background: #fbfdff; }
 .search-field input, .select-field select { width: 100%; color: #25344e; background: transparent; border: 0; outline: 0; font-size: 12px; }
 .select-field select { cursor: pointer; }
 .alerts-table { min-width: 920px; }
-.alerts-table td:nth-child(4) { max-width: 270px; }
-.alerts-table td:nth-child(5) { max-width: 430px; }
+.alerts-table td:nth-child(5) { max-width: 270px; }
+.alerts-table td:nth-child(6) { max-width: 430px; }
 .code-cell { color: #25344e; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 .empty-table { padding: 40px; text-align: center; color: var(--muted); }
 .pagination { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; color: var(--muted); background: #fbfcfe; border-top: 1px solid var(--line); font-size: 11px; }
@@ -491,7 +491,7 @@ main { width: min(1240px, calc(100% - 40px)); }
   transform: none;
   box-shadow: none;
 }
-.alerts-table { min-width: 1080px; }
+.alerts-table { min-width: 1160px; }
 .alerts-table td:last-child { min-width: 132px; }
 .invoice-view-button {
   padding: 7px 10px;

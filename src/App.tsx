@@ -490,7 +490,7 @@ export default function App() {
                 <label className="search-field">
                   <SearchIcon />
                   <span className="visually-hidden">Buscar alertas</span>
-                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar código, descripción, ID…" />
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar Row-Id, código, descripción, ID…" />
                 </label>
                 <label className="select-field">
                   <span className="visually-hidden">Filtrar por regla</span>
@@ -502,12 +502,13 @@ export default function App() {
               </div>
               <div className="table-scroll">
                 <table className="alerts-table">
-                  <thead><tr><th>Regla</th><th>Fila</th><th>Código</th><th>Descripción</th><th>Motivo</th><th>Factura</th></tr></thead>
+                  <thead><tr><th>Regla</th><th>Fila</th><th>Row-Id</th><th>Código</th><th>Descripción</th><th>Motivo</th><th>Factura</th></tr></thead>
                   <tbody>
                     {paginatedAlerts.map((alert: AlertRecord) => (
                       <tr key={`${alert.ruleId}-${alert.sourceRow}`}>
                         <td><span className="rule-code alert-code">{alert.ruleId}</span></td>
                         <td>{numberFormatter.format(alert.sourceRow)}</td>
+                        <td className="code-cell">{alert.rowId || '—'}</td>
                         <td className="code-cell">{alert.barcode || '—'}</td>
                         <td>{alert.description || '—'}</td>
                         <td>{alert.detail}</td>
@@ -528,7 +529,7 @@ export default function App() {
                       </tr>
                     ))}
                     {paginatedAlerts.length === 0 && (
-                      <tr><td className="empty-table" colSpan={6}>No hay alertas que coincidan con los filtros.</td></tr>
+                      <tr><td className="empty-table" colSpan={7}>No hay alertas que coincidan con los filtros.</td></tr>
                     )}
                   </tbody>
                 </table>
