@@ -8,6 +8,7 @@ import type {
   SourceRecord,
   ValidationResult,
 } from './types';
+import { classifyDescriptionGramaje } from './descriptionGramaje';
 
 interface CardinalityRule {
   id: string;
@@ -60,6 +61,11 @@ const AUTOMATIC_RULES: RuleDefinition[] = [
     'R28',
     'Cantidad comprada vs precio total',
     'Si cantidad_comprada es mayor que 1, Precio_Total_Preciador no puede ser igual a Precio_Unidad.',
+  ],
+  [
+    'R29',
+    'Gramaje sospechoso en descripción',
+    'Compara las descripciones de un mismo código y alerta unidades finales incompletas o cantidades de gramaje distintas; no modifica los registros.',
   ],
 ].map(([id, name, description]) => ({
   id,
@@ -362,6 +368,100 @@ export function validateDataset(
       expected: `La descripción debe incluir la marca ${displayValue(record.fields.Marca_Wm)}`,
       detail: `La marca "${displayValue(record.fields.Marca_Wm)}" no aparece en la descripción.`,
     });
+  }
+
+  const descriptionGroups = new Map<
+    string,
+    Map<string, { displayValue: string; rows: SourceRecord[] }>
+  >();
+  for (const record of dataset.records) {
+    const barcode = normalizeText(record.fields.codiGo_barras);
+    const description = normalizeText(record.fields.Descripcion);
+    if (!barcode || !description) continue;
+
+    const variants = descriptionGroups.get(barcode) ?? new Map();
+    const variant = variants.get(description) ?? {
+      displayValue: displayValue(record.fields.Descripcion),
+      rows: [],
+    };
+    variant.rows.push(record);
+    variants.set(description, variant);
+    descriptionGroups.set(barcode, variants);
+  }
+
+  for (const [barcode, variantsMap] of descriptionGroups) {
+    if (variantsMap.size <= 1) continue;
+
+    const variants = [...variantsMap.entries()].sort(
+      ([, first], [, second]) => second.rows.length - first.rows.length || first.displayValue.localeCompare(second.displayValue, 'es'),
+    );
+    const highestFrequency = variants[0][1].rows.length;
+    const majorityVariants = variants.filter(([, variant]) => variant.rows.length === highestFrequency);
+    const majority = majorityVariants.length === 1 ? majorityVariants[0] : null;
+    const issuesByVariant = new Map<string, Array<{ reason: string; reference: string }>>();
+
+    const addVariantIssue = (normalizedDescription: string, reason: string, reference: string) => {
+      const issues = issuesByVariant.get(normalizedDescription) ?? [];
+      if (!issues.some((issue) => issue.reason === reason && issue.reference === reference)) {
+        issues.push({ reason, reference });
+      }
+      issuesByVariant.set(normalizedDescription, issues);
+    };
+
+    if (majority) {
+      const [majorityKey, majorityVariant] = majority;
+      for (const [candidateKey, candidateVariant] of variants) {
+        if (candidateKey === majorityKey) continue;
+        const issue = classifyDescriptionGramaje(candidateVariant.displayValue, majorityVariant.displayValue);
+        if (!issue) continue;
+        const suspiciousKey = normalizeText(issue.suspiciousDescription);
+        addVariantIssue(suspiciousKey, issue.reason, issue.referenceDescription);
+      }
+    } else {
+      for (let firstIndex = 0; firstIndex < variants.length; firstIndex += 1) {
+        for (let secondIndex = firstIndex + 1; secondIndex < variants.length; secondIndex += 1) {
+          const [firstKey, firstVariant] = variants[firstIndex];
+          const [secondKey, secondVariant] = variants[secondIndex];
+          const issue = classifyDescriptionGramaje(firstVariant.displayValue, secondVariant.displayValue);
+          if (!issue) continue;
+
+          if (issue.reason === 'Unidad final incompleta') {
+            addVariantIssue(
+              normalizeText(issue.suspiciousDescription),
+              issue.reason,
+              issue.referenceDescription,
+            );
+          } else {
+            addVariantIssue(firstKey, issue.reason, secondVariant.displayValue);
+            addVariantIssue(secondKey, issue.reason, firstVariant.displayValue);
+          }
+        }
+      }
+    }
+
+    if (issuesByVariant.size === 0) continue;
+    markAffected('R29', variants.flatMap(([, variant]) => variant.rows));
+
+    for (const [variantKey, issues] of issuesByVariant) {
+      const variant = variantsMap.get(variantKey);
+      if (!variant) continue;
+      const reasons = [...new Set(issues.map((issue) => issue.reason))].join(' y ');
+      const references = [...new Set(issues.map((issue) => issue.reference))].join(' | ');
+      const majorityDetail = majority
+        ? `La descripción de referencia es "${references}".`
+        : `No existe una descripción mayoritaria única; comparar con "${references}".`;
+
+      for (const record of variant.rows) {
+        addAlert({
+          ...baseAlert(record, 'R29'),
+          key: `codiGo_barras: ${displayValue(record.fields.codiGo_barras)}`,
+          field: 'Descripcion',
+          observed: displayValue(record.fields.Descripcion),
+          expected: references,
+          detail: `Posible ${reasons.toLocaleLowerCase('es')} en la descripción para el código ${barcode}. ${majorityDetail} El registro solo se alerta; no se modifica.`,
+        });
+      }
+    }
   }
 
   const priceGroups = new Map<string, Array<{ record: SourceRecord; price: number }>>();

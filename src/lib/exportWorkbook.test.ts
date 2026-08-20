@@ -31,6 +31,7 @@ describe('Excel de salida', () => {
     expect(String(summary.find((row) => row[0] === 'EST-02')?.[5])).toContain('Precio_Total_Preciador');
     expect(String(summary.find((row) => row[0] === 'JER-01')?.[5])).toContain('columna Producto');
     expect(summary.some((row) => row[0] === 'R28')).toBe(true);
+    expect(summary.some((row) => row[0] === 'R29')).toBe(true);
     expect(summary.find((row) => row[0] === 'ORT-01')?.slice(1, 5)).toEqual([
       'Ortografía y espacios',
       'Adicional',
