@@ -295,9 +295,7 @@ export default function App() {
 
   const totalPages = Math.max(1, Math.ceil(filteredAlerts.length / PAGE_SIZE));
   const paginatedAlerts = filteredAlerts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const alertPercent = result?.metrics.totalRecords
-    ? (result.metrics.totalAlerts / result.metrics.totalRecords) * 100
-    : 0;
+  const alertPercent = result?.metrics.reviewPercent ?? 0;
   const rulesWithAlerts = allRuleSummaries.filter((rule) => rule.alertCount > 0);
   const displayedRules =
     allRuleSummaries.filter((rule) => showAllRules || rule.alertCount > 0 || rule.id === 'R21');
@@ -446,7 +444,7 @@ export default function App() {
 
             <div className="metrics-grid">
               <MetricCard label="Registros totales" value={numberFormatter.format(result.metrics.totalRecords)} tone="blue" />
-              <MetricCard label="Alertas" value={numberFormatter.format(result.metrics.totalAlerts)} tone="orange" />
+              <MetricCard label="Alertas" value={numberFormatter.format(result.metrics.reviewRecords)} tone="orange" />
               <MetricCard label="Alertas ortográficas" value={numberFormatter.format(result.orthographyAlerts.length)} tone="purple" />
               <MetricCard label="Sin alertas" value={numberFormatter.format(result.metrics.okRecords)} tone="green" />
               <MetricCard label="Porcentaje de alertas" value={`${percentFormatter.format(alertPercent)}%`} tone="yellow" />

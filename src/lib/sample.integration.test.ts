@@ -17,6 +17,9 @@ describe('archivo PQM de referencia', () => {
     const result = validateDataset(dataset, hierarchyData as HierarchyCatalog);
 
     expect(result.metrics.totalRecords).toBe(15509);
+    expect(result.metrics.reviewRecords).toBe(725);
+    expect(result.metrics.totalAlerts).toBe(729);
+    expect(result.metrics.okRecords).toBe(14784);
     expect(result.ruleSummaries.find((rule) => rule.id === 'R08')?.affectedRows).toBe(0);
     expect(result.ruleSummaries.find((rule) => rule.id === 'R25')?.affectedRows).toBe(207);
     expect(result.ruleSummaries.find((rule) => rule.id === 'R01')).toMatchObject({
