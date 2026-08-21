@@ -25,7 +25,7 @@ describe('archivo PQM de referencia', () => {
       (result.metrics.reviewRecords / result.metrics.totalRecords) * 100,
     );
     expect(result.ruleSummaries.find((rule) => rule.id === 'R08')?.affectedRows).toBe(0);
-    expect(result.ruleSummaries.find((rule) => rule.id === 'R25')?.affectedRows).toBe(207);
+    expect(result.ruleSummaries.find((rule) => rule.id === 'R25')?.affectedRows).toBe(273);
     expect(result.ruleSummaries.find((rule) => rule.id === 'R01')).toMatchObject({
       affectedRows: 35,
       alertCount: 1,

@@ -1,6 +1,6 @@
-# Validador PQM Walmart
+# Validador Walmart
 
-Aplicación web estática para reemplazar las 27 tablas dinámicas de control del panel PQM por validaciones automáticas y un Excel de alertas.
+Aplicación web estática para reemplazar las 27 tablas dinámicas de control de la base general por validaciones automáticas y un Excel de alertas.
 
 ## Privacidad
 

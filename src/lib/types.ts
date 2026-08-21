@@ -80,10 +80,9 @@ export interface AlertRecord {
   observed: string;
   expected: string;
   detail: string;
-  firstQuartile?: number;
-  thirdQuartile?: number;
-  interquartileRange?: number;
-  upperLimit?: number;
+  groupAverage?: number;
+  priceThreshold?: number;
+  priceDifferencePercent?: number;
   invoiceUrls?: string[];
 }
 
@@ -135,4 +134,5 @@ export interface WorkerRequest {
   sourceFileName: string;
   invoiceBuffer: ArrayBuffer;
   invoiceFileName: string;
+  hasBarcode: boolean;
 }

@@ -53,7 +53,7 @@ const AUTOMATIC_RULES: RuleDefinition[] = [
   [
     'R25',
     'Precio atípico por código y descripción',
-    'Precio superior a Q3 + 1,5 veces el rango intercuartílico de la misma combinación código-descripción.',
+    'Precio superior en más de 15% al promedio de la misma combinación código-descripción.',
   ],
   ['R26', 'Cantidades por ID', 'La suma de cantidad_comprada debe ser igual al máximo de Cantidad_Productos.'],
   ['R27', 'Montos por ID', 'La suma de Precio_Total_Preciador debe ser igual al máximo de Monto Total Fc.'],
@@ -197,18 +197,6 @@ export function numericValue(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function percentileInclusive(sortedValues: number[], probability: number): number {
-  if (sortedValues.length === 0) throw new Error('No se puede calcular un cuartil sin valores.');
-  const index = (sortedValues.length - 1) * probability;
-  const lowerIndex = Math.floor(index);
-  const upperIndex = Math.ceil(index);
-  if (lowerIndex === upperIndex) return sortedValues[lowerIndex];
-  return (
-    sortedValues[lowerIndex] +
-    (sortedValues[upperIndex] - sortedValues[lowerIndex]) * (index - lowerIndex)
-  );
-}
-
 function ruleName(ruleId: string): string {
   return RULE_BY_ID.get(ruleId)?.name ?? ruleId;
 }
@@ -229,6 +217,7 @@ export function validateDataset(
   dataset: SourceDataset,
   hierarchy: HierarchyCatalog,
   invoices?: InvoiceCatalog,
+  options: { hasBarcode?: boolean } = {},
 ): ValidationResult {
   const alertsByKey = new Map<string, AlertRecord>();
   const affectedRowsByRule = new Map<string, Set<number>>();
@@ -247,7 +236,9 @@ export function validateDataset(
   };
 
   for (const record of dataset.records) {
-    const missingFields = CRITICAL_FIELDS.filter((field) => normalizeText(record.fields[field]) === '');
+    const missingFields = options.hasBarcode === false
+      ? []
+      : CRITICAL_FIELDS.filter((field) => normalizeText(record.fields[field]) === '');
     if (missingFields.length > 0) {
       addAlert({
         ...baseAlert(record, 'EST-01'),
@@ -477,13 +468,12 @@ export function validateDataset(
     priceGroups.set(groupKey, group);
   }
   for (const group of priceGroups.values()) {
-    const sortedPrices = group.map((item) => item.price).sort((a, b) => a - b);
-    const firstQuartile = percentileInclusive(sortedPrices, 0.25);
-    const thirdQuartile = percentileInclusive(sortedPrices, 0.75);
-    const interquartileRange = thirdQuartile - firstQuartile;
-    const upperLimit = thirdQuartile + 1.5 * interquartileRange;
+    const groupAverage = group.reduce((total, item) => total + item.price, 0) / group.length;
+    if (groupAverage <= 0) continue;
+    const priceThreshold = groupAverage * 1.15;
     for (const { record, price } of group) {
-      if (price <= upperLimit) continue;
+      if (price <= priceThreshold) continue;
+      const priceDifferencePercent = (price - groupAverage) / groupAverage;
       addAlert({
         ...baseAlert(record, 'R25'),
         key: `codiGo_barras: ${displayValue(record.fields.codiGo_barras)} · Descripcion: ${displayValue(
@@ -491,14 +481,13 @@ export function validateDataset(
         )}`,
         field: 'Precio_Unidad',
         observed: displayValue(record.fields.Precio_Unidad),
-        expected: `Límite superior por cuartiles: ${upperLimit.toFixed(4)}`,
-        detail: `Para el mismo código y descripción, precio ${price} > Q3 ${thirdQuartile.toFixed(
-          4,
-        )} + 1,5 × RIC ${interquartileRange.toFixed(4)} = ${upperLimit.toFixed(4)}.`,
-        firstQuartile,
-        thirdQuartile,
-        interquartileRange,
-        upperLimit,
+        expected: `Promedio + 15%: ${priceThreshold.toFixed(4)}`,
+        detail: `Para el mismo código y descripción, el precio ${price} está ${(
+          priceDifferencePercent * 100
+        ).toFixed(2)}% por encima del promedio ${groupAverage.toFixed(4)} y supera el umbral de 15% (${priceThreshold.toFixed(4)}).`,
+        groupAverage,
+        priceThreshold,
+        priceDifferencePercent,
       });
     }
   }

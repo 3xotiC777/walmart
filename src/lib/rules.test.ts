@@ -1,13 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { percentileInclusive, validateDataset } from './rules';
+import { validateDataset } from './rules';
 import { makeDataset, TEST_HIERARCHY } from './testHelpers';
 
 describe('motor de validación PQM', () => {
-  it('calcula cuartiles inclusivos equivalentes a CUARTIL.INC', () => {
-    expect(percentileInclusive([1, 2, 3, 4], 0.25)).toBe(1.75);
-    expect(percentileInclusive([1, 2, 3, 4], 0.75)).toBe(3.25);
-  });
-
   it('cuenta todo el grupo como afectado y alerta solo el valor diferente de la mayoría', () => {
     const dataset = makeDataset([
       { codiGo_barras: ' 001 ', Descripcion: 'Producto marca' },
@@ -76,6 +71,18 @@ describe('motor de validación PQM', () => {
     expect(result.alerts.filter((alert) => alert.ruleId === 'R01')).toHaveLength(0);
   });
 
+  it('omite EST-01 cuando el estudio se declara sin código de barras', () => {
+    const dataset = makeDataset([
+      { codiGo_barras: '', Producto_Wm: '' },
+      { codiGo_barras: '', Descripcion: '' },
+    ]);
+
+    const result = validateDataset(dataset, TEST_HIERARCHY, undefined, { hasBarcode: false });
+
+    expect(result.alerts.filter((alert) => alert.ruleId === 'EST-01')).toHaveLength(0);
+    expect(result.ruleSummaries.find((rule) => rule.id === 'EST-01')?.alertCount).toBe(0);
+  });
+
   it('aplica la regla 15 y excluye marcas especiales válidas', () => {
     const dataset = makeDataset([
       { Marca_Wm: 'BADIA', Descripcion: 'CANELA BADIA 12GR' },
@@ -103,7 +110,7 @@ describe('motor de validación PQM', () => {
     expect(alerts.map((alert) => alert.sourceRow)).toEqual([4, 5]);
   });
 
-  it('calcula el límite superior de Tukey por la misma combinación código-descripción', () => {
+  it('alerta precios superiores en más de 15% al promedio de la misma combinación código-descripción', () => {
     const dataset = makeDataset([
       { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 10 },
       { codiGo_barras: 'P1', Descripcion: 'DESCRIPCION A', Precio_Unidad: 10 },
@@ -119,10 +126,10 @@ describe('motor de validación PQM', () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0].observed).toBe('100');
     expect(alerts[0].key).toContain('DESCRIPCION A');
-    expect(alerts[0].firstQuartile).toBe(10);
-    expect(alerts[0].thirdQuartile).toBe(10);
-    expect(alerts[0].interquartileRange).toBe(0);
-    expect(alerts[0].upperLimit).toBe(10);
+    expect(alerts[0].groupAverage).toBe(28);
+    expect(alerts[0].priceThreshold).toBeCloseTo(32.2);
+    expect(alerts[0].priceDifferencePercent).toBeCloseTo(72 / 28);
+    expect(alerts[0].detail).toContain('257.14% por encima del promedio');
   });
 
   it('valida las sumas de cantidad y monto por ID con sus campos reales', () => {

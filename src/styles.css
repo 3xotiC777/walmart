@@ -410,6 +410,45 @@ main { width: min(1240px, calc(100% - 40px)); }
   padding: 34px;
 }
 .dual-upload-zone > p:not(.eyebrow) { margin-bottom: 20px; }
+.barcode-question {
+  width: min(720px, 100%);
+  margin: 0 0 18px;
+  padding: 16px;
+  text-align: left;
+  background: #f7faff;
+  border: 1px solid #d8e4f2;
+  border-radius: 12px;
+}
+.barcode-question legend { padding: 0 7px; color: var(--navy); font-size: 14px; font-weight: 800; }
+.barcode-question > p { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.barcode-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.barcode-options label {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 1px 9px;
+  align-items: center;
+  padding: 12px;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #d8e1ec;
+  border-radius: 10px;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+.barcode-options label:hover { border-color: #9dbce2; }
+.barcode-options label.is-selected { background: #edf5ff; border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
+.barcode-options label > span {
+  display: grid;
+  grid-row: 1 / span 2;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--blue);
+  background: #e8f1ff;
+  border-radius: 50%;
+  font-weight: 900;
+}
+.barcode-options label strong { color: var(--navy); font-size: 13px; }
+.barcode-options label small { margin: 0; color: var(--muted); font-size: 11px; }
 .upload-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -595,6 +634,7 @@ main { width: min(1240px, calc(100% - 40px)); }
 
 @media (max-width: 760px) {
   .dual-upload-zone { padding: 28px 16px; }
+  .barcode-options { grid-template-columns: 1fr; }
   .upload-grid { grid-template-columns: 1fr; }
   .file-upload-card { min-height: 138px; }
   .invoice-modal-backdrop { padding: 10px; }
