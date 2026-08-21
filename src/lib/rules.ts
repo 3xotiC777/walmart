@@ -177,6 +177,27 @@ const NUMERIC_FIELDS = [
 const SPECIAL_BRANDS = new Set(['NO IDENTIFICABLE', 'SIN MARCA']);
 const VARIABLE_WEIGHT_UNITS = new Set(['KILOS']);
 const GROUP_SEPARATOR = '\u241F';
+const DESCRIPTION_ONLY_CARDINALITY_RULES = new Set(['R08', 'R09', 'R10']);
+const NO_BARCODE_RULE_OVERRIDES: Partial<
+  Record<string, Pick<RuleDefinition, 'name' | 'description'>>
+> = {
+  R08: {
+    name: 'Descripción → gramaje',
+    description: 'Una descripción solo puede tener un gramaje; se excluyen productos de peso variable en KILOS.',
+  },
+  R09: {
+    name: 'Descripción → unidad',
+    description: 'Una descripción solo puede tener una unidad de medida.',
+  },
+  R10: {
+    name: 'Descripción → código estándar',
+    description: 'Una descripción solo puede tener un código estándar no vacío.',
+  },
+  R25: {
+    name: 'Precio atípico por descripción',
+    description: 'Precio superior en más de 15% al promedio de los registros con la misma descripción.',
+  },
+};
 
 export function normalizeText(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -219,6 +240,11 @@ export function validateDataset(
   invoices?: InvoiceCatalog,
   options: { hasBarcode?: boolean } = {},
 ): ValidationResult {
+  const hasBarcode = options.hasBarcode !== false;
+  const activeRuleDefinitions = hasBarcode
+    ? RULE_DEFINITIONS
+    : RULE_DEFINITIONS.map((rule) => ({ ...rule, ...NO_BARCODE_RULE_OVERRIDES[rule.id] }));
+  const activeRuleById = new Map(activeRuleDefinitions.map((rule) => [rule.id, rule]));
   const alertsByKey = new Map<string, AlertRecord>();
   const affectedRowsByRule = new Map<string, Set<number>>();
 
@@ -236,9 +262,9 @@ export function validateDataset(
   };
 
   for (const record of dataset.records) {
-    const missingFields = options.hasBarcode === false
-      ? []
-      : CRITICAL_FIELDS.filter((field) => normalizeText(record.fields[field]) === '');
+    const missingFields = hasBarcode
+      ? CRITICAL_FIELDS.filter((field) => normalizeText(record.fields[field]) === '')
+      : [];
     if (missingFields.length > 0) {
       addAlert({
         ...baseAlert(record, 'EST-01'),
@@ -287,13 +313,16 @@ export function validateDataset(
   }
 
   for (const rule of CARDINALITY_RULES) {
+    const keyFields = !hasBarcode && DESCRIPTION_ONLY_CARDINALITY_RULES.has(rule.id)
+      ? ['Descripcion']
+      : rule.keyFields;
     const groups = new Map<string, GroupData>();
     for (const record of dataset.records) {
       if (rule.id === 'R08' && VARIABLE_WEIGHT_UNITS.has(normalizeText(record.fields.unidad_de_Medida))) {
         continue;
       }
 
-      const normalizedKeys = rule.keyFields.map((field) => normalizeText(record.fields[field]));
+      const normalizedKeys = keyFields.map((field) => normalizeText(record.fields[field]));
       const normalizedTarget = normalizeText(record.fields[rule.targetField]);
       if (normalizedKeys.some((value) => value === '') || normalizedTarget === '') continue;
 
@@ -329,7 +358,7 @@ export function validateDataset(
       const conflictingValues = targetsByFrequency.map((target) => target.displayValue).join(' | ');
 
       for (const record of rowsToAlert) {
-        const key = rule.keyFields
+        const key = keyFields
           .map((field) => `${field}: ${displayValue(record.fields[field])}`)
           .join(' · ');
         const majorityDetail = majorityTarget
@@ -460,9 +489,9 @@ export function validateDataset(
     const barcode = normalizeText(record.fields.codiGo_barras);
     const description = normalizeText(record.fields.Descripcion);
     const price = numericValue(record.fields.Precio_Unidad);
-    if (!barcode || !description || price === null) continue;
+    if (!description || price === null || (hasBarcode && !barcode)) continue;
 
-    const groupKey = [barcode, description].join(GROUP_SEPARATOR);
+    const groupKey = hasBarcode ? [barcode, description].join(GROUP_SEPARATOR) : description;
     const group = priceGroups.get(groupKey) ?? [];
     group.push({ record, price });
     priceGroups.set(groupKey, group);
@@ -474,15 +503,19 @@ export function validateDataset(
     for (const { record, price } of group) {
       if (price <= priceThreshold) continue;
       const priceDifferencePercent = (price - groupAverage) / groupAverage;
+      const key = hasBarcode
+        ? `codiGo_barras: ${displayValue(record.fields.codiGo_barras)} · Descripcion: ${displayValue(
+            record.fields.Descripcion,
+          )}`
+        : `Descripcion: ${displayValue(record.fields.Descripcion)}`;
+      const groupLabel = hasBarcode ? 'el mismo código y descripción' : 'la misma descripción';
       addAlert({
         ...baseAlert(record, 'R25'),
-        key: `codiGo_barras: ${displayValue(record.fields.codiGo_barras)} · Descripcion: ${displayValue(
-          record.fields.Descripcion,
-        )}`,
+        key,
         field: 'Precio_Unidad',
         observed: displayValue(record.fields.Precio_Unidad),
         expected: `Promedio + 15%: ${priceThreshold.toFixed(4)}`,
-        detail: `Para el mismo código y descripción, el precio ${price} está ${(
+        detail: `Para ${groupLabel}, el precio ${price} está ${(
           priceDifferencePercent * 100
         ).toFixed(2)}% por encima del promedio ${groupAverage.toFixed(4)} y supera el umbral de 15% (${priceThreshold.toFixed(4)}).`,
         groupAverage,
@@ -594,6 +627,7 @@ export function validateDataset(
   const alerts = [...alertsByKey.values()]
     .map((alert) => ({
       ...alert,
+      ruleName: activeRuleById.get(alert.ruleId)?.name ?? alert.ruleName,
       invoiceUrls: invoices?.urlsByRef[normalizeText(alert.surveyId)] ?? [],
     }))
     .sort((a, b) => a.sourceRow - b.sourceRow || a.ruleId.localeCompare(b.ruleId, 'es'));
@@ -608,7 +642,7 @@ export function validateDataset(
     .filter((record) => alertsPerRow.has(record.excelRow))
     .map((record) => ({ record, alerts: alertsPerRow.get(record.excelRow) ?? [] }));
 
-  const ruleSummaries: RuleSummary[] = RULE_DEFINITIONS.map((rule) => ({
+  const ruleSummaries: RuleSummary[] = activeRuleDefinitions.map((rule) => ({
     ...rule,
     affectedRows: affectedRowsByRule.get(rule.id)?.size ?? 0,
     alertCount: alerts.filter((alert) => alert.ruleId === rule.id).length,

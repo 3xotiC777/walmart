@@ -83,6 +83,56 @@ describe('motor de validación PQM', () => {
     expect(result.ruleSummaries.find((rule) => rule.id === 'EST-01')?.alertCount).toBe(0);
   });
 
+  it('usa solo la descripción en R08, R09, R10 y R25 cuando el estudio no trae código', () => {
+    const dataset = makeDataset([
+      {
+        codiGo_barras: '',
+        Descripcion: 'PRODUCTO MARCA 500GR',
+        Gramaje: 500,
+        unidad_de_Medida: 'GRAMOS',
+        codiGo_estandar: 'STD-A',
+        Precio_Unidad: 100,
+      },
+      {
+        codiGo_barras: '',
+        Descripcion: 'PRODUCTO MARCA 500GR',
+        Gramaje: 500,
+        unidad_de_Medida: 'GRAMOS',
+        codiGo_estandar: 'STD-A',
+        Precio_Unidad: 100,
+      },
+      {
+        codiGo_barras: '',
+        Descripcion: 'PRODUCTO MARCA 500GR',
+        Gramaje: 750,
+        unidad_de_Medida: 'UNIDADES',
+        codiGo_estandar: 'STD-B',
+        Precio_Unidad: 200,
+      },
+    ]);
+
+    const withBarcode = validateDataset(dataset, TEST_HIERARCHY, undefined, { hasBarcode: true });
+    const withoutBarcode = validateDataset(dataset, TEST_HIERARCHY, undefined, { hasBarcode: false });
+    const adaptedRuleIds = new Set(['R08', 'R09', 'R10', 'R25']);
+    const adaptedAlerts = withoutBarcode.alerts.filter((alert) => adaptedRuleIds.has(alert.ruleId));
+
+    expect(withBarcode.alerts.filter((alert) => adaptedRuleIds.has(alert.ruleId))).toHaveLength(0);
+    expect(adaptedAlerts.map((alert) => alert.ruleId)).toEqual(['R08', 'R09', 'R10', 'R25']);
+    expect(adaptedAlerts.every((alert) => alert.sourceRow === 4)).toBe(true);
+    expect(adaptedAlerts.every((alert) => alert.key === 'Descripcion: PRODUCTO MARCA 500GR')).toBe(true);
+    expect(adaptedAlerts.find((alert) => alert.ruleId === 'R25')).toMatchObject({
+      ruleName: 'Precio atípico por descripción',
+      groupAverage: 400 / 3,
+    });
+    expect(withoutBarcode.ruleSummaries.find((rule) => rule.id === 'R10')).toMatchObject({
+      name: 'Descripción → código estándar',
+      description: 'Una descripción solo puede tener un código estándar no vacío.',
+    });
+    expect(withoutBarcode.ruleSummaries.find((rule) => rule.id === 'R25')).toMatchObject({
+      name: 'Precio atípico por descripción',
+    });
+  });
+
   it('aplica la regla 15 y excluye marcas especiales válidas', () => {
     const dataset = makeDataset([
       { Marca_Wm: 'BADIA', Descripcion: 'CANELA BADIA 12GR' },

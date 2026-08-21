@@ -384,7 +384,9 @@ export default function App() {
                   <p>Selecciona ambos archivos para cruzar <strong>Id_Dn W</strong> con <strong>RefID_STG</strong>.</p>
                   <fieldset className="barcode-question">
                     <legend>¿Este estudio trae código de barras?</legend>
-                    <p id="barcode-question-help">La respuesta define si se ejecuta el control EST-01 de campos críticos vacíos.</p>
+                    <p id="barcode-question-help">
+                      La respuesta define EST-01 y si R08, R09, R10 y R25 agrupan por código + descripción o solo por descripción.
+                    </p>
                     <div className="barcode-options" aria-describedby="barcode-question-help">
                       <label className={hasBarcode === true ? 'is-selected' : ''}>
                         <input
@@ -396,7 +398,7 @@ export default function App() {
                         />
                         <span aria-hidden="true">✓</span>
                         <strong>Sí, trae código</strong>
-                        <small>Ejecutar EST-01</small>
+                        <small>EST-01 · código + descripción</small>
                       </label>
                       <label className={hasBarcode === false ? 'is-selected' : ''}>
                         <input
@@ -408,7 +410,7 @@ export default function App() {
                         />
                         <span aria-hidden="true">—</span>
                         <strong>No trae código</strong>
-                        <small>Omitir EST-01</small>
+                        <small>Sin EST-01 · solo descripción</small>
                       </label>
                     </div>
                   </fieldset>

@@ -81,4 +81,49 @@ describe('Excel de salida', () => {
     const priceAlertIndex = alertRows.findIndex((row) => row.Regla === 'R25');
     expect(workbook.Sheets.Alertas[XLSX.utils.encode_cell({ r: priceAlertIndex + 1, c: 14 })].z).toBe('0.00%');
   });
+
+  it('documenta en el Excel las reglas adaptadas al modo sin código', () => {
+    const dataset = makeDataset([
+      {
+        codiGo_barras: '',
+        Descripcion: 'PRODUCTO MARCA 500GR',
+        Gramaje: 500,
+        unidad_de_Medida: 'GRAMOS',
+        codiGo_estandar: 'STD-A',
+        Precio_Unidad: 100,
+      },
+      {
+        codiGo_barras: '',
+        Descripcion: 'PRODUCTO MARCA 500GR',
+        Gramaje: 500,
+        unidad_de_Medida: 'GRAMOS',
+        codiGo_estandar: 'STD-A',
+        Precio_Unidad: 100,
+      },
+      {
+        codiGo_barras: '',
+        Descripcion: 'PRODUCTO MARCA 500GR',
+        Gramaje: 750,
+        unidad_de_Medida: 'UNIDADES',
+        codiGo_estandar: 'STD-B',
+        Precio_Unidad: 200,
+      },
+    ]);
+    const validation = validateDataset(dataset, TEST_HIERARCHY, undefined, { hasBarcode: false });
+    const workbook = XLSX.read(buildOutputWorkbook(dataset, validation), { type: 'array' });
+    const summary = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumen, { header: 1 });
+    const alerts = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas);
+
+    expect(summary.find((row) => row[0] === 'R10')?.slice(1, 6)).toEqual([
+      'Descripción → código estándar',
+      'Automático',
+      3,
+      1,
+      'Una descripción solo puede tener un código estándar no vacío.',
+    ]);
+    expect(summary.find((row) => row[0] === 'R25')?.[1]).toBe('Precio atípico por descripción');
+    const adaptedAlerts = alerts.filter((row) => ['R08', 'R09', 'R10', 'R25'].includes(String(row.Regla)));
+    expect(adaptedAlerts).toHaveLength(4);
+    expect(adaptedAlerts.every((row) => row.Clave_Validada === 'Descripcion: PRODUCTO MARCA 500GR')).toBe(true);
+  });
 });
