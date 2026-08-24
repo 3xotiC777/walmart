@@ -2,7 +2,12 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable",
+      "WebWorker"
+    ],
     "allowJs": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -15,7 +20,32 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vite/client", "vitest/globals", "node"]
+    "incremental": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "types": [
+      "vitest/globals",
+      "node"
+    ]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": [
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    "src",
+    "proxy.ts",
+    "vitest.config.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

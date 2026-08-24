@@ -240,7 +240,7 @@ export function validateDataset(
   };
 
   const addAlert = (alert: AlertRecord) => {
-    alertsByKey.set(`${alert.ruleId}|${alert.sourceRow}`, alert);
+    alertsByKey.set(`${alert.ruleId}|${alert.sourceRow}|${alert.field}`, alert);
     const affectedRows = affectedRowsByRule.get(alert.ruleId) ?? new Set<number>();
     affectedRows.add(alert.sourceRow);
     affectedRowsByRule.set(alert.ruleId, affectedRows);
@@ -248,26 +248,26 @@ export function validateDataset(
 
   for (const record of dataset.records) {
     const missingFields = CRITICAL_FIELDS.filter((field) => normalizeText(record.fields[field]) === '');
-    if (missingFields.length > 0) {
+    for (const field of missingFields) {
       addAlert({
         ...baseAlert(record, 'EST-01'),
         key: displayValue(record.fields['Row-Id']) || `Fila ${record.excelRow}`,
-        field: missingFields.join(', '),
+        field,
         observed: '(vacío)',
         expected: 'Valor requerido',
-        detail: `Campos críticos vacíos: ${missingFields.join(', ')}.`,
+        detail: `La columna crítica ${field} está vacía; el validador necesita revisar esta celda.`,
       });
     }
 
     const invalidNumericFields = NUMERIC_FIELDS.filter((field) => numericValue(record.fields[field]) === null);
-    if (invalidNumericFields.length > 0) {
+    for (const field of invalidNumericFields) {
       addAlert({
         ...baseAlert(record, 'EST-02'),
         key: displayValue(record.fields['Row-Id']) || `Fila ${record.excelRow}`,
-        field: invalidNumericFields.join(', '),
-        observed: invalidNumericFields.map((field) => `${field}=${displayValue(record.fields[field]) || '(vacío)'}`).join(' | '),
-        expected: 'Valores numéricos válidos',
-        detail: `Campos numéricos inválidos: ${invalidNumericFields.join(', ')}.`,
+        field,
+        observed: displayValue(record.fields[field]) || '(vacío)',
+        expected: 'Valor numérico válido',
+        detail: `La columna ${field} debe contener un número válido; revise el valor de esta celda.`,
       });
     }
   }
@@ -556,8 +556,10 @@ export function validateDataset(
         addAlert({
           ...baseAlert(record, ruleId),
           key: surveyId,
-          field: `${sumField} / ${maxField}`,
-          observed: `Suma ${sumField}: ${sum}`,
+          // La evidencia compara el agregado completo, pero la edición manual
+          // debe apuntar a una celda real de esta fila.
+          field: sumField,
+          observed: displayValue(record.fields[sumField]),
           expected: `Máximo ${maxField}: ${maximum}`,
           detail: `Para Id_Dn W ${surveyId}, la suma es ${sum} y el máximo esperado es ${maximum}.`,
         });

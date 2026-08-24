@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import hierarchyData from '../data/hierarchy.json';
+import { createCollaborationManifest } from '../lib/collaboration';
 import { buildOutputWorkbook } from '../lib/exportWorkbook';
 import { generateOrthographyAlerts } from '../lib/orthography';
 import { parseInvoiceWorkbook, parseWorkbook } from '../lib/parser';
@@ -52,6 +53,9 @@ worker.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
       invoices.urlsByRef[alert.surveyId.trim().toUpperCase()] ?? [],
     ));
 
+    progress('Preparando tareas y sugerencias…', 80);
+    const collaboration = createCollaborationManifest(dataset, validation, orthographyAlerts);
+
     progress('Construyendo el Excel de alertas…', 86);
     const generatedAt = new Date();
     const outputBuffer = buildOutputWorkbook(dataset, validation, generatedAt, orthographyAlerts);
@@ -67,6 +71,9 @@ worker.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
       invoiceImages: invoices.totalImages,
       generatedAt: generatedAt.toISOString(),
       hierarchyProducts: hierarchy.metadata.products,
+      dataset,
+      invoiceCatalog: invoices,
+      collaboration,
       outputBuffer,
     };
     const response: WorkerMessage = { type: 'result', payload };

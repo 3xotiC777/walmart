@@ -122,6 +122,9 @@ export interface WorkerResult {
   invoiceImages: number;
   generatedAt: string;
   hierarchyProducts: number;
+  dataset: SourceDataset;
+  invoiceCatalog: InvoiceCatalog;
+  collaboration: import('./collaboration').CollaborationManifest;
   outputBuffer: ArrayBuffer;
 }
 

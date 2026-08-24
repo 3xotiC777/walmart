@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, RefObject } from 'react';
 import { ORTHOGRAPHY_RULE } from './lib/types';

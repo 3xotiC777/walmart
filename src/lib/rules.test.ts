@@ -76,6 +76,26 @@ describe('motor de validación PQM', () => {
     expect(result.alerts.filter((alert) => alert.ruleId === 'R01')).toHaveLength(0);
   });
 
+  it('crea una alerta editable por cada celda estructural inválida de la fila', () => {
+    const dataset = makeDataset([{
+      'Row-Id': '',
+      codiGo_barras: '',
+      Precio_Unidad: 'NO NUMÉRICO',
+      Precio_Total_Preciador: '',
+    }]);
+
+    const structural = validateDataset(dataset, TEST_HIERARCHY).alerts
+      .filter((alert) => alert.ruleId === 'EST-01' || alert.ruleId === 'EST-02');
+
+    expect(structural.map((alert) => [alert.ruleId, alert.field])).toEqual([
+      ['EST-01', 'Row-Id'],
+      ['EST-01', 'codiGo_barras'],
+      ['EST-02', 'Precio_Unidad'],
+      ['EST-02', 'Precio_Total_Preciador'],
+    ]);
+    expect(new Set(structural.map((alert) => `${alert.ruleId}:${alert.field}`)).size).toBe(4);
+  });
+
   it('aplica la regla 15 y excluye marcas especiales válidas', () => {
     const dataset = makeDataset([
       { Marca_Wm: 'BADIA', Descripcion: 'CANELA BADIA 12GR' },
@@ -137,6 +157,14 @@ describe('motor de validación PQM', () => {
 
     expect(result.alerts.filter((alert) => alert.ruleId === 'R26').map((alert) => alert.sourceRow)).toEqual([4, 5]);
     expect(result.alerts.filter((alert) => alert.ruleId === 'R27').map((alert) => alert.sourceRow)).toEqual([4, 5]);
+    expect(result.alerts.find((alert) => alert.ruleId === 'R26')).toMatchObject({
+      field: 'cantidad_comprada',
+      observed: '1',
+    });
+    expect(result.alerts.find((alert) => alert.ruleId === 'R27')).toMatchObject({
+      field: 'Precio_Total_Preciador',
+      observed: '12',
+    });
   });
 
   it('aplica R28 cuando una compra múltiple conserva el precio total igual al unitario', () => {

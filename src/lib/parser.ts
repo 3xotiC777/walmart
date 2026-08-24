@@ -105,7 +105,9 @@ export function parseWorkbook(buffer: ArrayBuffer, sourceFile: string): SourceDa
     header: 1,
     raw: true,
     defval: null,
-    blankrows: false,
+    // Conservar los huecos es indispensable: excelRow se usa después para
+    // ubicar la celda OOXML exacta que recibirá una corrección.
+    blankrows: true,
   });
 
   if (matrix.length < 2) {

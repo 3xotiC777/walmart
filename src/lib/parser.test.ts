@@ -36,6 +36,29 @@ describe('lector de libros', () => {
     expect(dataset.records[0].fields.codiGo_barras).toBe('00123');
   });
 
+  it('conserva el número real de fila cuando existe un renglón vacío intermedio', () => {
+    const row = (rowId: string, barcode: string) => TEST_HEADERS.map((header) => {
+      if (header === 'Row-Id') return rowId;
+      if (header === 'Id_Dn W') return `ID-${rowId}`;
+      if (header === 'codiGo_barras') return barcode;
+      if (['Cantidad_Productos', 'cantidad_comprada', 'Precio_Unidad', 'Precio_Total_Preciador', 'Monto Total Fc'].includes(header)) return 1;
+      return 'VALOR';
+    });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      TEST_HEADERS,
+      row('ROW-1', '00123'),
+      [],
+      row('ROW-2', '00456'),
+    ]), 'pqm consolidado');
+    const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+
+    const dataset = parseWorkbook(buffer, 'con-hueco.xlsx');
+
+    expect(dataset.records.map((record) => record.excelRow)).toEqual([2, 4]);
+    expect(dataset.records[1].fields.codiGo_barras).toBe('00456');
+  });
+
   it('rechaza archivos sin la hoja requerida', () => {
     expect(() => parseWorkbook(workbookBuffer('Otra hoja'), 'entrada.xlsx')).toThrow(WorkbookValidationError);
   });

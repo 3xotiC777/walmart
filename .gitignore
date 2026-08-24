@@ -1,7 +1,13 @@
 node_modules/
 dist/
+.next/
+.vercel/
+.env
+.env.*
+!.env.example
 coverage/
 .vite/
+supabase/.temp/
 *.log
 *.tsbuildinfo
 
