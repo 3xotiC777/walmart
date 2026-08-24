@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(37);
+select extensions.plan(45);
 
 -- Identidades aisladas para probar RLS y RPC con el mismo rol que usa PostgREST.
 insert into auth.users (id, email)
@@ -148,6 +148,30 @@ select extensions.is((select count(*) from public.validation_alerts where id = '
 select extensions.is((select count(*) from public.validation_alerts where id = '07670000-0000-4000-8000-000000000002'), 0::bigint, 'el validador no ve la alerta ajena');
 select extensions.is((select count(*) from public.source_rows where id = 910004), 0::bigint, 'el validador no ve una fila no relacionada');
 select extensions.is((select count(*) from storage.objects where bucket_id = 'pqm-private' and name like '%panel-prueba-rls.xlsx'), 0::bigint, 'el validador no puede leer el panel original');
+select extensions.is(
+  (select task_count from public.get_upload_assignment_metrics('c3300000-0000-4000-8000-000000000001')),
+  1::bigint,
+  'las métricas solo cuentan la tarea asignada al validador'
+);
+select extensions.is(
+  (select alert_count from public.get_upload_assignment_metrics('c3300000-0000-4000-8000-000000000001')),
+  1::bigint,
+  'las métricas solo cuentan la alerta asignada al validador'
+);
+select extensions.is(
+  (select id::text from public.browse_review_tasks(
+    'c3300000-0000-4000-8000-000000000001', null, null, null, 'rule_asc', 1, 50
+  )),
+  'e5500000-0000-4000-8000-000000000001',
+  'la bandeja devuelve la tarea propia y no la ajena'
+);
+select extensions.is(
+  (select total_count from public.browse_review_tasks(
+    'c3300000-0000-4000-8000-000000000001', null, null, null, 'rule_asc', 1, 50
+  )),
+  1::bigint,
+  'el total paginado también respeta la asignación del validador'
+);
 
 select extensions.throws_ok(
   $$select public.add_related_row_to_block_guarded('d4400000-0000-4000-8000-000000000001', 910004, 1)$$,
@@ -399,6 +423,76 @@ select extensions.ok(
       and role = 'leader' and is_active
   ),
   'el último líder permanece activo tras el rechazo'
+);
+reset role;
+
+-- La ordenación por regla se aplica al conjunto completo antes de paginar.
+insert into public.source_rows (
+  id, upload_id, workspace_id, external_key, excel_row, row_id,
+  id_dn_w, barcode, description, field_values
+)
+values (
+  910005, 'c3300000-0000-4000-8000-000000000001',
+  'b2200000-0000-4000-8000-000000000001', 'row-6', 6,
+  'ROW-R25', 'ID-R25', '025', 'PRODUCTO R25',
+  '{"Descripcion":"PRODUCTO R25"}'::jsonb
+);
+insert into public.review_tasks (
+  id, upload_id, workspace_id, external_key, source_row_id,
+  assignment_block_id, status, alert_count
+)
+values (
+  'e5500000-0000-4000-8000-000000000003',
+  'c3300000-0000-4000-8000-000000000001',
+  'b2200000-0000-4000-8000-000000000001',
+  'task-r25', 910005, 'd4400000-0000-4000-8000-000000000001',
+  'pending', 1
+);
+insert into public.validation_alerts (
+  id, upload_id, workspace_id, task_id, event_key, rule_code,
+  category, affected_field, source_column_index, original_value, detail, status
+)
+values (
+  '07670000-0000-4000-8000-000000000003',
+  'c3300000-0000-4000-8000-000000000001',
+  'b2200000-0000-4000-8000-000000000001',
+  'e5500000-0000-4000-8000-000000000003',
+  'alert-r25', 'R25', 'validation', 'Precio_Unidad', 3,
+  '10000', 'Precio superior al rango esperado.', 'pending'
+);
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a1100000-0000-4000-8000-000000000003","role":"authenticated","iat":1900000000}',
+  true
+);
+select extensions.is(
+  (select primary_rule from public.browse_review_tasks(
+    'c3300000-0000-4000-8000-000000000001', null, null, null, 'rule_asc', 1, 1
+  )),
+  'R01',
+  'rule_asc comienza por la regla de menor rango'
+);
+select extensions.is(
+  (select primary_rule from public.browse_review_tasks(
+    'c3300000-0000-4000-8000-000000000001', null, null, null, 'rule_desc', 1, 1
+  )),
+  'R25',
+  'rule_desc comienza por la regla de mayor rango'
+);
+select extensions.is(
+  (select primary_rule from public.browse_review_tasks(
+    'c3300000-0000-4000-8000-000000000001', null, null, null, 'rule_asc', 2, 1
+  )),
+  'R25',
+  'la segunda página continúa el orden global sin repetir la primera tarea'
+);
+select extensions.is(
+  (select total_count from public.browse_review_tasks(
+    'c3300000-0000-4000-8000-000000000001', null, null, null, 'rule_asc', 1, 1
+  )),
+  3::bigint,
+  'el total incluye las tres tareas visibles aunque la página contenga una'
 );
 reset role;
 

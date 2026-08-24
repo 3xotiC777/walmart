@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(47);
+select extensions.plan(54);
 
 select extensions.ok(
   (select count(*) = 16
@@ -197,6 +197,40 @@ select extensions.ok(not has_function_privilege('authenticated', 'public.add_rel
 select extensions.ok(not has_function_privilege('authenticated', 'public.reconcile_assignment_blocks(uuid,uuid,text,integer,integer,uuid)', 'execute'), 'authenticated no puede omitir el guard al reconciliar bloques');
 select extensions.ok(not has_function_privilege('authenticated', 'public.reopen_related_task(uuid,integer,text,uuid)', 'execute'), 'authenticated no puede omitir el guard al reabrir relacionados');
 select extensions.ok(to_regprocedure('private.current_session_is_fresh(timestamptz)') is not null, 'existe el guard persistente de frescura de sesión');
+
+select extensions.ok(
+  to_regprocedure('public.get_upload_assignment_metrics(uuid)') is not null,
+  'existe la RPC de métricas visibles por asignación'
+);
+select extensions.ok(
+  to_regprocedure('public.browse_review_tasks(uuid,public.review_status,text,text,text,integer,integer)') is not null,
+  'existe la RPC paginada y ordenable de tareas'
+);
+select extensions.ok(
+  not has_function_privilege('anon', 'public.get_upload_assignment_metrics(uuid)', 'execute'),
+  'anon no puede consultar métricas de asignación'
+);
+select extensions.ok(
+  has_function_privilege('authenticated', 'public.get_upload_assignment_metrics(uuid)', 'execute'),
+  'authenticated puede consultar sus métricas bajo RLS'
+);
+select extensions.ok(
+  not has_function_privilege('anon', 'public.browse_review_tasks(uuid,public.review_status,text,text,text,integer,integer)', 'execute'),
+  'anon no puede navegar la bandeja'
+);
+select extensions.ok(
+  has_function_privilege('authenticated', 'public.browse_review_tasks(uuid,public.review_status,text,text,text,integer,integer)', 'execute'),
+  'authenticated puede navegar su bandeja bajo RLS'
+);
+select extensions.ok(
+  (select bool_and(not procedure.prosecdef)
+   from pg_proc procedure
+   where procedure.oid = any (array[
+     'public.get_upload_assignment_metrics(uuid)'::regprocedure::oid,
+     'public.browse_review_tasks(uuid,public.review_status,text,text,text,integer,integer)'::regprocedure::oid
+   ])),
+  'las RPC de bandeja son security invoker y conservan RLS'
+);
 
 select * from extensions.finish();
 rollback;
