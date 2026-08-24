@@ -53,7 +53,7 @@ const AUTOMATIC_RULES: RuleDefinition[] = [
   [
     'R25',
     'Precio atípico por código y descripción',
-    'Precio superior a Q3 + 1,5 veces el rango intercuartílico de la misma combinación código-descripción.',
+    'Precio superior en más de 15% al promedio de la misma combinación código-descripción.',
   ],
   ['R26', 'Cantidades por ID', 'La suma de cantidad_comprada debe ser igual al máximo de Cantidad_Productos.'],
   ['R27', 'Montos por ID', 'La suma de Precio_Total_Preciador debe ser igual al máximo de Monto Total Fc.'],
@@ -177,6 +177,35 @@ const NUMERIC_FIELDS = [
 const SPECIAL_BRANDS = new Set(['NO IDENTIFICABLE', 'SIN MARCA']);
 const VARIABLE_WEIGHT_UNITS = new Set(['KILOS']);
 const GROUP_SEPARATOR = '\u241F';
+const DESCRIPTION_ONLY_CARDINALITY_RULES = new Set(['R08', 'R09', 'R10']);
+const NO_BARCODE_RULE_OVERRIDES: Partial<Record<string, Partial<RuleDefinition>>> = {
+  R08: {
+    name: 'Descripción → gramaje',
+    description: 'Una descripción solo puede tener un gramaje; se excluyen productos de peso variable en KILOS.',
+  },
+  R09: {
+    name: 'Descripción → unidad',
+    description: 'Una descripción solo puede tener una unidad de medida.',
+  },
+  R10: {
+    name: 'Descripción → código estándar',
+    description: 'Una descripción solo puede tener un código estándar no vacío.',
+  },
+  R25: {
+    name: 'Precio atípico por descripción',
+    description: 'Precio superior en más de 15% al promedio de los registros con la misma descripción.',
+  },
+  'EST-01': {
+    status: 'Omitido por modalidad',
+    description: 'Este estudio fue declarado sin código de barras, por lo que EST-01 no se ejecuta.',
+  },
+};
+
+export function getRuleDefinitions(hasBarcode = true): RuleDefinition[] {
+  return hasBarcode
+    ? RULE_DEFINITIONS
+    : RULE_DEFINITIONS.map((rule) => ({ ...rule, ...NO_BARCODE_RULE_OVERRIDES[rule.id] }));
+}
 
 export function normalizeText(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -195,18 +224,6 @@ export function numericValue(value: unknown): number | null {
   if (typeof value !== 'string' || value.trim() === '') return null;
   const parsed = Number(value.trim());
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-export function percentileInclusive(sortedValues: number[], probability: number): number {
-  if (sortedValues.length === 0) throw new Error('No se puede calcular un cuartil sin valores.');
-  const index = (sortedValues.length - 1) * probability;
-  const lowerIndex = Math.floor(index);
-  const upperIndex = Math.ceil(index);
-  if (lowerIndex === upperIndex) return sortedValues[lowerIndex];
-  return (
-    sortedValues[lowerIndex] +
-    (sortedValues[upperIndex] - sortedValues[lowerIndex]) * (index - lowerIndex)
-  );
 }
 
 function ruleName(ruleId: string): string {
@@ -229,7 +246,11 @@ export function validateDataset(
   dataset: SourceDataset,
   hierarchy: HierarchyCatalog,
   invoices?: InvoiceCatalog,
+  options: { hasBarcode?: boolean } = {},
 ): ValidationResult {
+  const hasBarcode = options.hasBarcode ?? dataset.hasBarcode ?? true;
+  const activeRuleDefinitions = getRuleDefinitions(hasBarcode);
+  const activeRuleById = new Map(activeRuleDefinitions.map((rule) => [rule.id, rule]));
   const alertsByKey = new Map<string, AlertRecord>();
   const affectedRowsByRule = new Map<string, Set<number>>();
 
@@ -247,7 +268,9 @@ export function validateDataset(
   };
 
   for (const record of dataset.records) {
-    const missingFields = CRITICAL_FIELDS.filter((field) => normalizeText(record.fields[field]) === '');
+    const missingFields = hasBarcode
+      ? CRITICAL_FIELDS.filter((field) => normalizeText(record.fields[field]) === '')
+      : [];
     for (const field of missingFields) {
       addAlert({
         ...baseAlert(record, 'EST-01'),
@@ -296,13 +319,16 @@ export function validateDataset(
   }
 
   for (const rule of CARDINALITY_RULES) {
+    const keyFields = !hasBarcode && DESCRIPTION_ONLY_CARDINALITY_RULES.has(rule.id)
+      ? ['Descripcion']
+      : rule.keyFields;
     const groups = new Map<string, GroupData>();
     for (const record of dataset.records) {
       if (rule.id === 'R08' && VARIABLE_WEIGHT_UNITS.has(normalizeText(record.fields.unidad_de_Medida))) {
         continue;
       }
 
-      const normalizedKeys = rule.keyFields.map((field) => normalizeText(record.fields[field]));
+      const normalizedKeys = keyFields.map((field) => normalizeText(record.fields[field]));
       const normalizedTarget = normalizeText(record.fields[rule.targetField]);
       if (normalizedKeys.some((value) => value === '') || normalizedTarget === '') continue;
 
@@ -338,7 +364,7 @@ export function validateDataset(
       const conflictingValues = targetsByFrequency.map((target) => target.displayValue).join(' | ');
 
       for (const record of rowsToAlert) {
-        const key = rule.keyFields
+        const key = keyFields
           .map((field) => `${field}: ${displayValue(record.fields[field])}`)
           .join(' · ');
         const majorityDetail = majorityTarget
@@ -469,36 +495,38 @@ export function validateDataset(
     const barcode = normalizeText(record.fields.codiGo_barras);
     const description = normalizeText(record.fields.Descripcion);
     const price = numericValue(record.fields.Precio_Unidad);
-    if (!barcode || !description || price === null) continue;
+    if (!description || price === null || (hasBarcode && !barcode)) continue;
 
-    const groupKey = [barcode, description].join(GROUP_SEPARATOR);
+    const groupKey = hasBarcode ? [barcode, description].join(GROUP_SEPARATOR) : description;
     const group = priceGroups.get(groupKey) ?? [];
     group.push({ record, price });
     priceGroups.set(groupKey, group);
   }
   for (const group of priceGroups.values()) {
-    const sortedPrices = group.map((item) => item.price).sort((a, b) => a - b);
-    const firstQuartile = percentileInclusive(sortedPrices, 0.25);
-    const thirdQuartile = percentileInclusive(sortedPrices, 0.75);
-    const interquartileRange = thirdQuartile - firstQuartile;
-    const upperLimit = thirdQuartile + 1.5 * interquartileRange;
+    const groupAverage = group.reduce((total, item) => total + item.price, 0) / group.length;
+    if (groupAverage <= 0) continue;
+    const priceThreshold = groupAverage * 1.15;
     for (const { record, price } of group) {
-      if (price <= upperLimit) continue;
+      if (price <= priceThreshold) continue;
+      const priceDifferencePercent = (price - groupAverage) / groupAverage;
+      const key = hasBarcode
+        ? `codiGo_barras: ${displayValue(record.fields.codiGo_barras)} · Descripcion: ${displayValue(
+            record.fields.Descripcion,
+          )}`
+        : `Descripcion: ${displayValue(record.fields.Descripcion)}`;
+      const groupLabel = hasBarcode ? 'el mismo código y descripción' : 'la misma descripción';
       addAlert({
         ...baseAlert(record, 'R25'),
-        key: `codiGo_barras: ${displayValue(record.fields.codiGo_barras)} · Descripcion: ${displayValue(
-          record.fields.Descripcion,
-        )}`,
+        key,
         field: 'Precio_Unidad',
         observed: displayValue(record.fields.Precio_Unidad),
-        expected: `Límite superior por cuartiles: ${upperLimit.toFixed(4)}`,
-        detail: `Para el mismo código y descripción, precio ${price} > Q3 ${thirdQuartile.toFixed(
-          4,
-        )} + 1,5 × RIC ${interquartileRange.toFixed(4)} = ${upperLimit.toFixed(4)}.`,
-        firstQuartile,
-        thirdQuartile,
-        interquartileRange,
-        upperLimit,
+        expected: `Promedio + 15%: ${priceThreshold.toFixed(4)}`,
+        detail: `Para ${groupLabel}, el precio ${price} está ${(
+          priceDifferencePercent * 100
+        ).toFixed(2)}% por encima del promedio ${groupAverage.toFixed(4)} y supera el umbral de 15% (${priceThreshold.toFixed(4)}).`,
+        groupAverage,
+        priceThreshold,
+        priceDifferencePercent,
       });
     }
   }
@@ -607,6 +635,7 @@ export function validateDataset(
   const alerts = [...alertsByKey.values()]
     .map((alert) => ({
       ...alert,
+      ruleName: activeRuleById.get(alert.ruleId)?.name ?? alert.ruleName,
       invoiceUrls: invoices?.urlsByRef[normalizeText(alert.surveyId)] ?? [],
     }))
     .sort((a, b) => a.sourceRow - b.sourceRow || a.ruleId.localeCompare(b.ruleId, 'es'));
@@ -621,7 +650,7 @@ export function validateDataset(
     .filter((record) => alertsPerRow.has(record.excelRow))
     .map((record) => ({ record, alerts: alertsPerRow.get(record.excelRow) ?? [] }));
 
-  const ruleSummaries: RuleSummary[] = RULE_DEFINITIONS.map((rule) => ({
+  const ruleSummaries: RuleSummary[] = activeRuleDefinitions.map((rule) => ({
     ...rule,
     affectedRows: affectedRowsByRule.get(rule.id)?.size ?? 0,
     alertCount: alerts.filter((alert) => alert.ruleId === rule.id).length,

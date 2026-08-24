@@ -15,6 +15,7 @@ describe('reporte colaborativo de alertas', () => {
     const output = buildCollaborativeReportWorkbook({
       upload: {
         display_name: 'PQM agosto',
+        has_barcode: false,
         total_rows: 15_509,
         task_count: 2,
         alert_count: 3,
@@ -93,10 +94,9 @@ describe('reporte colaborativo de alertas', () => {
           suggestion_method: 'normal-price-mode',
           suggestion_evidence: {
             statistics: {
-              firstQuartile: 1_900,
-              thirdQuartile: 2_100,
-              interquartileRange: 200,
-              upperLimit: 2_400,
+              groupAverage: 2_000,
+              priceThreshold: 2_300,
+              priceDifferencePercent: 4,
             },
           },
           status: 'pending',
@@ -135,7 +135,7 @@ describe('reporte colaborativo de alertas', () => {
       },
     });
 
-    const workbook = XLSX.read(output, { type: 'array' });
+    const workbook = XLSX.read(output, { type: 'array', cellNF: true });
     expect(workbook.SheetNames).toEqual(['Resumen', 'Alertas', 'Registros_a_revisar', 'Ortografía']);
     expect(workbook.Props?.Title).toBe('Reporte colaborativo PQM agosto');
 
@@ -148,6 +148,12 @@ describe('reporte colaborativo de alertas', () => {
     expect(summary.find((row) => row[0] === 'R01')?.slice(3, 5)).toEqual([35, 1]);
     expect(summary.find((row) => row[0] === 'R25')?.slice(3, 5)).toEqual([1, 1]);
     expect(summary.find((row) => row[0] === 'R02')?.slice(3, 5)).toEqual([0, 0]);
+    expect(summary.find((row) => row[0] === 'R08')?.[1]).toBe('Descripción → gramaje');
+    expect(summary.find((row) => row[0] === 'R25')?.[1]).toBe('Precio atípico por descripción');
+    expect(summary.find((row) => row[0] === 'EST-01')?.slice(2, 8)).toEqual([
+      'Omitido por modalidad', 0, 0, 0, 0,
+      'Este estudio fue declarado sin código de barras, por lo que EST-01 no se ejecuta.',
+    ]);
 
     const alertRows = rows(workbook.Sheets.Alertas);
     expect(alertRows).toHaveLength(4);
@@ -168,15 +174,16 @@ describe('reporte colaborativo de alertas', () => {
     const pending = rowObject(alertRows[0], alertRows[3]);
     expect(pending).toMatchObject({
       Regla: 'R25',
-      Cuartil_1: 1_900,
-      Cuartil_3: 2_100,
-      Limite_Superior: 2_400,
+      Promedio_Grupo: 2_000,
+      Umbral_15_Por_Ciento: 2_300,
+      Porcentaje_Diferencia_Promedio: 4,
       Foto_Factura: 'https://example.com/factura-dn-2.jpg',
       Responsable: 'Sin asignar',
       Estado: 'pending',
       Decisión: '',
       Valor_Final: '',
     });
+    expect(workbook.Sheets.Alertas.M4?.z).toBe('0.00%');
 
     const taskRows = rows(workbook.Sheets.Registros_a_revisar);
     expect(taskRows).toHaveLength(3);

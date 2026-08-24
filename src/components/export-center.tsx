@@ -1,19 +1,14 @@
 'use client';
 
-import hierarchyData from '@/data/hierarchy.json';
-import {
-  revalidateExportOverlay,
-  type RevalidatedExportAlert,
-} from '@/lib/export-revalidation';
+import type { RevalidatedExportAlert } from '@/lib/export-revalidation';
 import { useState } from 'react';
 import { DownloadIcon, FileIcon } from './icons';
 import { createBrowserSupabaseClient } from '@/lib/supabase/client';
-import { parseWorkbook } from '@/lib/parser';
-import { buildCollaborativeReportWorkbook } from '@/lib/collaborative-report';
-import { buildCorrectedWorkbookFileName, buildSuggestionsWorkbook, coerceWorkbookCorrectionValue, patchOriginalWorkbook, type WorkbookCellCorrection, type WorkbookSuggestion } from '@/lib/workbookExports';
+import type { parseWorkbook } from '@/lib/parser';
+import type { WorkbookCellCorrection, WorkbookSuggestion } from '@/lib/workbookExports';
 import type { HierarchyCatalog } from '@/lib/types';
 
-interface UploadInfo { id: string; display_name: string; panel_object_path: string; total_rows: number; task_count: number; alert_count: number; orthography_count: number; pending_task_count: number; corrected_cell_count: number; confirmed_correct_count: number; created_at: string }
+interface UploadInfo { id: string; display_name: string; panel_object_path: string; has_barcode: boolean; total_rows: number; task_count: number; alert_count: number; orthography_count: number; pending_task_count: number; corrected_cell_count: number; confirmed_correct_count: number; created_at: string }
 interface PreflightSummary {
   pendingTasks: number;
   remainingAlertCount: number;
@@ -24,7 +19,6 @@ interface PreflightSummary {
   safeForFinal: boolean;
 }
 
-const hierarchy = hierarchyData as HierarchyCatalog;
 const PREFLIGHT_ALERT_PREVIEW = 25;
 
 function save(buffer: ArrayBuffer, filename: string) {
@@ -137,9 +131,26 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
   async function run(kind: 'report' | 'suggestions' | 'corrected') {
     setBusy(kind); setError(''); setPreflight(null);
     try {
-      const data = await loadData(kind === 'report');
+      const [data, originalBuffer, hierarchyModule, parserModule, revalidationModule, reportModule, workbookModule] = await Promise.all([
+        loadData(kind === 'report'),
+        original(),
+        import('@/data/hierarchy.json'),
+        import('@/lib/parser'),
+        import('@/lib/export-revalidation'),
+        import('@/lib/collaborative-report'),
+        import('@/lib/workbookExports'),
+      ]);
+      const hierarchy = hierarchyModule.default as HierarchyCatalog;
+      const { parseWorkbook } = parserModule;
+      const { revalidateExportOverlay } = revalidationModule;
+      const { buildCollaborativeReportWorkbook } = reportModule;
+      const {
+        buildCorrectedWorkbookFileName,
+        buildSuggestionsWorkbook,
+        coerceWorkbookCorrectionValue,
+        patchOriginalWorkbook,
+      } = workbookModule;
       const currentUpload = { ...upload, ...data.snapshot };
-      const originalBuffer = await original();
       const dataset = parseWorkbook(originalBuffer.slice(0), upload.display_name);
       validateOverlay(dataset, data.resolutions);
       const revalidation = await revalidateExportOverlay({
@@ -148,6 +159,7 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
         alerts: data.alerts,
         decisions: data.decisions,
         hierarchy,
+        hasBarcode: upload.has_barcode,
       });
       const requiresDraft = Number(data.snapshot.pending_task_count) > 0 || !revalidation.safeForFinal;
       setPreflight({

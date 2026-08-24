@@ -18,6 +18,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const panelName = String(body.panelName ?? 'panel.xlsx');
   const invoiceName = String(body.invoiceName ?? 'facturas.xlsx');
+  if (typeof body.hasBarcode !== 'boolean') return jsonError('Indica si este estudio trae código de barras.');
   if (!/^[a-f0-9]{64}$/i.test(body.panelHash) || !/^[a-f0-9]{64}$/i.test(body.invoiceHash)) return jsonError('No fue posible verificar la integridad de los archivos.');
   if (!Number.isInteger(body.panelSize) || !Number.isInteger(body.invoiceSize)) return jsonError('El tamaño de los archivos no es válido.');
   const uploadId = randomUUID();
@@ -35,20 +36,22 @@ export async function POST(request: Request) {
     p_invoice_sha256_hex: body.invoiceHash,
     p_invoice_size_bytes: body.invoiceSize,
     p_source_headers: Array.isArray(body.headers) ? body.headers : [],
+    p_has_barcode: body.hasBarcode,
   });
   if (error) {
     const duplicate = error.code === '23505';
     if (duplicate) {
       const { data: candidates } = await supabase
         .from('uploads')
-        .select('id, panel_object_path, invoice_object_path, panel_sha256, invoice_sha256, status')
+        .select('id, panel_object_path, invoice_object_path, panel_sha256, invoice_sha256, has_barcode, status')
         .eq('workspace_id', viewer.workspaceId)
         .in('status', ['uploading', 'processing'])
         .order('created_at', { ascending: false })
         .limit(20);
       const resumable = (candidates ?? []).find((candidate) =>
         byteaMatches(candidate.panel_sha256, body.panelHash)
-        && byteaMatches(candidate.invoice_sha256, body.invoiceHash));
+        && byteaMatches(candidate.invoice_sha256, body.invoiceHash)
+        && candidate.has_barcode === body.hasBarcode);
       if (resumable?.invoice_object_path) {
         return NextResponse.json({
           ok: true,

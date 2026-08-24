@@ -2,6 +2,8 @@
 
 Aplicación interna para detectar, repartir, revisar y corregir alertas del panel PQM. La interfaz usa Next.js App Router y Supabase; el motor R01–R29, EST, JER y ortografía sigue ejecutándose localmente en un Web Worker.
 
+Cada jornada registra si el estudio trae código de barras. Cuando no lo trae, R08, R09, R10 y R25 agrupan por descripción; R25 utiliza el umbral `promedio + 15 %` en ambas modalidades.
+
 ## Flujo operativo
 
 1. Un líder carga el panel y el libro de facturas. Los archivos se guardan en un bucket privado mediante una carga TUS reanudable.

@@ -115,7 +115,7 @@ describe('plan de ingesta colaborativa', () => {
     expect(new Set(alerts.map((alert) => alert.task_external_key))).toEqual(new Set(['task-4']));
   });
 
-  it('persiste Q1, Q3, RIC y límite superior de R25 en la evidencia', async () => {
+  it('persiste promedio, umbral de 15 % y diferencia de R25 en la evidencia', async () => {
     const dataset = makeDataset(
       [10, 10, 10, 10, 100].map((price) => ({
         codiGo_barras: 'P1',
@@ -133,11 +133,11 @@ describe('plan de ingesta colaborativa', () => {
 
     expect(alert?.suggestion_evidence).toMatchObject({
       statistics: {
-        firstQuartile: 10,
-        thirdQuartile: 10,
-        interquartileRange: 0,
-        upperLimit: 10,
+        groupAverage: 28,
+        priceDifferencePercent: 72 / 28,
       },
     });
+    const statistics = (alert?.suggestion_evidence as { statistics?: { priceThreshold?: number } })?.statistics;
+    expect(statistics?.priceThreshold).toBeCloseTo(32.2);
   });
 });

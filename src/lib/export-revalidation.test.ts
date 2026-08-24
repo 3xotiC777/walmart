@@ -119,6 +119,7 @@ describe('preflight de exportación colaborativa', () => {
       alerts: state.alerts,
       decisions: state.decisions,
       hierarchy,
+      hasBarcode: true,
     });
 
     expect(result.safeForFinal).toBe(true);
@@ -135,6 +136,7 @@ describe('preflight de exportación colaborativa', () => {
       alerts: state.alerts,
       decisions: state.decisions,
       hierarchy,
+      hasBarcode: true,
     });
 
     expect(result.safeForFinal).toBe(false);
@@ -157,6 +159,7 @@ describe('preflight de exportación colaborativa', () => {
       alerts: state.alerts,
       decisions: state.decisions,
       hierarchy,
+      hasBarcode: true,
     });
 
     expect(result.safeForFinal).toBe(true);
@@ -175,6 +178,7 @@ describe('preflight de exportación colaborativa', () => {
       alerts: [],
       decisions: [],
       hierarchy,
+      hasBarcode: true,
     });
 
     expect(result.safeForFinal).toBe(false);
@@ -182,5 +186,54 @@ describe('preflight de exportación colaborativa', () => {
     expect(result.remainingAlerts).toEqual([
       expect.objectContaining({ ruleId: 'ORT-01', sourceRow: 2, reason: 'new_alert' }),
     ]);
+  });
+
+  it('reconstruye grupos y huellas con la modalidad sin código guardada en la jornada', async () => {
+    const source = dataset();
+    source.records = [10, 10, 100].map((price, index) => {
+      const recordFields: Record<string, string | number> = {
+        ...source.records[0].fields,
+        'Row-Id': `ROW-${index + 1}`,
+        codiGo_barras: `COD-${index + 1}`,
+        Precio_Unidad: price,
+      };
+      return {
+        excelRow: index + 2,
+        fields: recordFields,
+        values: headers.map((header) => recordFields[header]),
+      };
+    });
+
+    const initialDataset = { ...source, hasBarcode: false };
+    const initialValidation = validateDataset(initialDataset, hierarchy, undefined, { hasBarcode: false });
+    const initialManifest = createCollaborationManifest(initialDataset, initialValidation);
+    const initialAlert = initialManifest.tasks
+      .flatMap((task) => task.alerts)
+      .find((alert) => alert.ruleId === 'R25');
+    if (!initialAlert) throw new Error('El fixture debe producir R25 en modo sin código.');
+    const fingerprint = await collaborationAlertEvidenceFingerprint(initialDataset, initialAlert);
+
+    const result = await revalidateExportOverlay({
+      dataset: source,
+      resolutions: [],
+      alerts: [{
+        id: 'db-alert-r25',
+        event_key: initialAlert.id,
+        rule_code: 'R25',
+        evidence_fingerprint: `\\x${fingerprint}`,
+      }],
+      decisions: [{
+        alert_id: 'db-alert-r25',
+        decision: 'confirmed_correct',
+        evidence_fingerprint: `\\x${fingerprint}`,
+        superseded_at: null,
+      }],
+      hierarchy,
+      hasBarcode: false,
+    });
+
+    expect(result.overlayDataset.hasBarcode).toBe(false);
+    expect(result.acceptedConfirmedCorrect).toBe(1);
+    expect(result.invalidConfirmedCorrect).toEqual([]);
   });
 });

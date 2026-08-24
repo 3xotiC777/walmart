@@ -146,6 +146,7 @@ export default function App() {
   const [status, setStatus] = useState<AppStatus>('idle');
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+  const [hasBarcode, setHasBarcode] = useState<boolean | null>(null);
   const [dragTarget, setDragTarget] = useState<'source' | 'invoice' | null>(null);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
@@ -168,6 +169,7 @@ export default function App() {
     setStatus('idle');
     setSourceFile(null);
     setInvoiceFile(null);
+    setHasBarcode(null);
     setDragTarget(null);
     setResult(null);
     setError('');
@@ -203,7 +205,12 @@ export default function App() {
   const analyzeFiles = async () => {
     if (!sourceFile || !invoiceFile) {
       setStatus('error');
-      setError('Selecciona el panel PQM y el archivo de facturas antes de analizar.');
+      setError('Selecciona la base general y el archivo de facturas antes de analizar.');
+      return;
+    }
+    if (hasBarcode === null) {
+      setStatus('error');
+      setError('Indica si este estudio trae código de barras antes de analizar.');
       return;
     }
 
@@ -254,6 +261,7 @@ export default function App() {
           sourceFileName: sourceFile.name,
           invoiceBuffer,
           invoiceFileName: invoiceFile.name,
+          hasBarcode,
         },
         [sourceBuffer, invoiceBuffer],
       );
@@ -323,11 +331,11 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="./" aria-label="Inicio del Validador PQM">
-          <span className="brand-mark">PQM</span>
+        <a className="brand" href="./" aria-label="Inicio del Validador Walmart">
+          <span className="brand-mark">WM</span>
           <span>
             <strong>Validador Walmart</strong>
-            <small>Control de calidad del panel</small>
+            <small>Control de calidad de la base</small>
           </span>
         </a>
         <span className="local-badge"><ShieldIcon /> Procesamiento 100% local</span>
@@ -339,7 +347,7 @@ export default function App() {
             <p className="eyebrow">VALIDACIÓN AUTOMÁTICA</p>
             <h1>De 27 tablas dinámicas a una revisión clara.</h1>
             <p>
-              Cruza el panel PQM con sus facturas, revisa las alertas con evidencia visual y descarga un Excel listo para validación.
+              Cruza la base general con sus facturas, revisa las alertas con evidencia visual y descarga un Excel listo para validación.
             </p>
             <div className="hero-facts" aria-label="Características">
               <span><CheckIcon /> 27 controles automáticos</span>
@@ -374,11 +382,43 @@ export default function App() {
                 <div className="dropzone dual-upload-zone">
                   <div className="upload-icon"><UploadIcon /></div>
                   <p className="eyebrow">ARCHIVOS DE ENTRADA</p>
-                  <h2>Panel PQM + facturas</h2>
+                  <h2>Base general + facturas</h2>
                   <p>Selecciona ambos archivos para cruzar <strong>Id_Dn W</strong> con <strong>RefID_STG</strong>.</p>
+                  <fieldset className="barcode-question">
+                    <legend>¿Este estudio trae código de barras?</legend>
+                    <p id="barcode-question-help">
+                      La respuesta define EST-01 y si R08, R09, R10 y R25 agrupan por código + descripción o solo por descripción.
+                    </p>
+                    <div className="barcode-options" aria-describedby="barcode-question-help">
+                      <label className={hasBarcode === true ? 'is-selected' : ''}>
+                        <input
+                          className="visually-hidden"
+                          type="radio"
+                          name="has-barcode"
+                          checked={hasBarcode === true}
+                          onChange={() => setHasBarcode(true)}
+                        />
+                        <span aria-hidden="true">✓</span>
+                        <strong>Sí, trae código</strong>
+                        <small>EST-01 · código + descripción</small>
+                      </label>
+                      <label className={hasBarcode === false ? 'is-selected' : ''}>
+                        <input
+                          className="visually-hidden"
+                          type="radio"
+                          name="has-barcode"
+                          checked={hasBarcode === false}
+                          onChange={() => setHasBarcode(false)}
+                        />
+                        <span aria-hidden="true">—</span>
+                        <strong>No trae código</strong>
+                        <small>Sin EST-01 · solo descripción</small>
+                      </label>
+                    </div>
+                  </fieldset>
                   <div className="upload-grid">
                     <UploadCard
-                      title="1. Panel maestro PQM"
+                      title="1. Base general"
                       description="Debe incluir la hoja pqm consolidado."
                       file={sourceFile}
                       inputRef={sourceInputRef}
@@ -400,7 +440,7 @@ export default function App() {
                     <button
                       className="primary-button"
                       type="button"
-                      disabled={!sourceFile || !invoiceFile}
+                      disabled={!sourceFile || !invoiceFile || hasBarcode === null}
                       onClick={() => void analyzeFiles()}
                     >
                       Analizar y cruzar facturas
@@ -433,7 +473,7 @@ export default function App() {
                 <p className="eyebrow">ANÁLISIS COMPLETADO</p>
                 <h2>Resultado de la validación</h2>
                 <p className="file-line">
-                  Panel: {result.sourceFile} · Facturas: {result.invoiceFile} ({numberFormatter.format(result.invoiceImages)} imágenes) · {formatDate(result.generatedAt)}
+                  Base general: {result.sourceFile} · Facturas: {result.invoiceFile} ({numberFormatter.format(result.invoiceImages)} imágenes) · {formatDate(result.generatedAt)}
                 </p>
               </div>
               <div className="heading-actions">
@@ -609,7 +649,7 @@ export default function App() {
       )}
 
       <footer>
-        <span>Validador PQM · Control de calidad</span>
+        <span>Validador Walmart · Control de calidad</span>
         <span>Los datos permanecen en tu dispositivo</span>
       </footer>
     </div>

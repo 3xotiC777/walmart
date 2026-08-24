@@ -75,10 +75,9 @@ export function buildOutputWorkbook(
     Valor_Observado: alert.observed,
     Valor_Esperado_o_Conflictos: alert.expected,
     Detalle: alert.detail,
-    Cuartil_1: alert.firstQuartile ?? null,
-    Cuartil_3: alert.thirdQuartile ?? null,
-    Rango_Intercuartil: alert.interquartileRange ?? null,
-    Limite_Superior: alert.upperLimit ?? null,
+    Promedio_Combinacion: alert.groupAverage ?? null,
+    Umbral_15_Por_Ciento: alert.priceThreshold ?? null,
+    Porcentaje_Diferencia_Promedio: alert.priceDifferencePercent ?? null,
     Foto_Factura: alert.invoiceUrls?.join('\n') ?? '',
   }));
   const alertsSheet = XLSX.utils.json_to_sheet(alertRows, {
@@ -95,21 +94,28 @@ export function buildOutputWorkbook(
       'Valor_Observado',
       'Valor_Esperado_o_Conflictos',
       'Detalle',
-      'Cuartil_1',
-      'Cuartil_3',
-      'Rango_Intercuartil',
-      'Limite_Superior',
+      'Promedio_Combinacion',
+      'Umbral_15_Por_Ciento',
+      'Porcentaje_Diferencia_Promedio',
       'Foto_Factura',
     ],
   });
   result.alerts.forEach((alert, index) => {
     const firstInvoice = alert.invoiceUrls?.[0];
     if (!firstInvoice) return;
-    const cell = alertsSheet[XLSX.utils.encode_cell({ r: index + 1, c: 16 })];
+    const cell = alertsSheet[XLSX.utils.encode_cell({ r: index + 1, c: 15 })];
     if (cell) cell.l = { Target: firstInvoice, Tooltip: 'Abrir la primera factura asociada' };
   });
+  for (let row = 1; row <= alertRows.length; row += 1) {
+    const averageCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 12 })];
+    const thresholdCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 13 })];
+    const differenceCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 14 })];
+    if (averageCell) averageCell.z = '#,##0.0000';
+    if (thresholdCell) thresholdCell.z = '#,##0.0000';
+    if (differenceCell) differenceCell.z = '0.00%';
+  }
   addAutofilter(alertsSheet);
-  setColumns(alertsSheet, [12, 30, 12, 20, 16, 18, 46, 44, 24, 34, 46, 72, 16, 16, 20, 18, 70]);
+  setColumns(alertsSheet, [12, 30, 12, 20, 16, 18, 46, 44, 24, 34, 46, 72, 22, 22, 30, 70]);
   XLSX.utils.book_append_sheet(workbook, alertsSheet, 'Alertas');
 
   const reviewedHeader = [

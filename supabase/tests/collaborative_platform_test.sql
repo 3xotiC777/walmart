@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(44);
+select extensions.plan(47);
 
 select extensions.ok(
   (select count(*) = 16
@@ -71,6 +71,25 @@ select extensions.ok(
           where table_schema = 'public' and table_name = 'profiles'
             and column_name = 'locked_until'),
   'profiles incluye bloqueo temporal'
+);
+select extensions.ok(
+  exists (select 1 from information_schema.columns
+          where table_schema = 'public' and table_name = 'uploads'
+            and column_name = 'has_barcode' and is_nullable = 'NO'
+            and column_default = 'true'),
+  'uploads conserva la modalidad de código de barras con valor seguro por defecto'
+);
+select extensions.ok(
+  to_regprocedure('public.create_upload(uuid,uuid,text,text,text,bigint,text,text,bigint,jsonb,boolean)') is not null
+  and to_regprocedure('public.create_upload(uuid,uuid,text,text,text,bigint,text,text,bigint,jsonb)') is null,
+  'create_upload exige la firma que persiste la modalidad de análisis'
+);
+select extensions.ok(
+  exists (select 1 from pg_indexes
+          where schemaname = 'public'
+            and indexname = 'uploads_workspace_panel_hash_active_uidx'
+            and indexdef like '%panel_sha256, has_barcode%'),
+  'la deduplicación distingue el mismo archivo analizado en modalidades diferentes'
 );
 select extensions.ok(
   to_regprocedure('public.ingest_validation_batch(uuid,uuid,jsonb)') is not null,

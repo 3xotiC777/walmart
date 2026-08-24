@@ -1,4 +1,4 @@
-import { displayValue, normalizeText, numericValue, percentileInclusive } from './rules';
+import { displayValue, normalizeText, numericValue } from './rules';
 import type {
   AlertRecord,
   CellValue,
@@ -31,10 +31,9 @@ export interface CollaborationEvidence {
   groupSize: number;
   sourceRows: number[];
   statistics?: {
-    firstQuartile: number;
-    thirdQuartile: number;
-    interquartileRange: number;
-    upperLimit: number;
+    groupAverage: number;
+    priceThreshold: number;
+    priceDifferencePercent?: number;
   };
 }
 
@@ -199,6 +198,7 @@ const CARDINALITY_DEFINITIONS: Record<string, CardinalityDefinition> = {
   R23: { keyFields: ['Categoria_Wm'], targetField: 'Canasto Wm' },
   R24: { keyFields: ['Marca_Wm'], targetField: 'Tipo_Marca' },
 };
+const DESCRIPTION_ONLY_CARDINALITY_RULES = new Set(['R08', 'R09', 'R10']);
 
 const HIERARCHY_TARGETS: Record<string, string> = {
   'JER-02': 'Categoria_Wm',
@@ -311,7 +311,9 @@ function groupDescriptor(
   let keyValues: Record<string, CollaborationValue>;
 
   if (cardinality && sourceRecord) {
-    keyFields = cardinality.keyFields;
+    keyFields = dataset.hasBarcode === false && DESCRIPTION_ONLY_CARDINALITY_RULES.has(alert.source.ruleId)
+      ? ['Descripcion']
+      : cardinality.keyFields;
     targetField = cardinality.targetField;
     keyNormalized = keyFields.map((field) => normalizeText(sourceRecord.fields[field]));
     records = dataset.records.filter((record) => {
@@ -321,7 +323,7 @@ function groupDescriptor(
     });
     keyValues = Object.fromEntries(keyFields.map((field) => [field, collaborationValue(sourceRecord.fields[field])]));
   } else if (alert.source.ruleId === 'R25' && sourceRecord) {
-    keyFields = ['codiGo_barras', 'Descripcion'];
+    keyFields = dataset.hasBarcode === false ? ['Descripcion'] : ['codiGo_barras', 'Descripcion'];
     targetField = 'Precio_Unidad';
     keyNormalized = keyFields.map((field) => normalizeText(sourceRecord.fields[field]));
     records = dataset.records.filter((record) => recordMatches(record, keyFields, keyNormalized));
@@ -519,11 +521,10 @@ function buildSuggestion(
       .map((record) => ({ value: numericValue(record.fields.Precio_Unidad), sourceRow: record.excelRow }))
       .filter((item): item is { value: number; sourceRow: number } => item.value !== null);
     if (prices.length === 0) return manualSuggestion(dataset, descriptor, alert);
-    const sortedPrices = prices.map((item) => item.value).sort((left, right) => left - right);
-    const q1 = percentileInclusive(sortedPrices, 0.25);
-    const q3 = percentileInclusive(sortedPrices, 0.75);
-    const upperLimit = alert.source.upperLimit ?? q3 + 1.5 * (q3 - q1);
-    const normalPrices = prices.filter((item) => item.value <= upperLimit);
+    const groupAverage = alert.source.groupAverage
+      ?? prices.reduce((sum, item) => sum + item.value, 0) / prices.length;
+    const priceThreshold = alert.source.priceThreshold ?? groupAverage * 1.15;
+    const normalPrices = prices.filter((item) => item.value <= priceThreshold);
     if (normalPrices.length === 0) {
       return manualSuggestion(dataset, descriptor, alert, [], 'manual-review', 'No hay precios normales para proponer un reemplazo.');
     }
@@ -541,14 +542,13 @@ function buildSuggestion(
         alternatives,
         autoApplicable: numericValue(alert.source.observed) !== Number(first.value),
         evidence: {
-          summary: `La moda única de los ${normalPrices.length} precios dentro del límite ${upperLimit} es ${first.value}.`,
+          summary: `La moda única de los ${normalPrices.length} precios dentro del umbral promedio + 15 % (${priceThreshold}) es ${first.value}.`,
           groupSize: descriptor.sourceRows.length,
           sourceRows: descriptor.sourceRows,
           statistics: {
-            firstQuartile: alert.source.firstQuartile ?? q1,
-            thirdQuartile: alert.source.thirdQuartile ?? q3,
-            interquartileRange: alert.source.interquartileRange ?? q3 - q1,
-            upperLimit,
+            groupAverage,
+            priceThreshold,
+            priceDifferencePercent: alert.source.priceDifferencePercent,
           },
         },
       };
@@ -569,10 +569,9 @@ function buildSuggestion(
         groupSize: descriptor.sourceRows.length,
         sourceRows: descriptor.sourceRows,
         statistics: {
-          firstQuartile: alert.source.firstQuartile ?? q1,
-          thirdQuartile: alert.source.thirdQuartile ?? q3,
-          interquartileRange: alert.source.interquartileRange ?? q3 - q1,
-          upperLimit,
+          groupAverage,
+          priceThreshold,
+          priceDifferencePercent: alert.source.priceDifferencePercent,
         },
       },
     };

@@ -81,13 +81,12 @@ describe('manifiesto colaborativo', () => {
       autoApplicable: true,
       evidence: {
         statistics: {
-          firstQuartile: 10,
-          thirdQuartile: 10,
-          interquartileRange: 0,
-          upperLimit: 10,
+          groupAverage: 28,
+          priceDifferencePercent: 72 / 28,
         },
       },
     });
+    expect(modeSuggestion.evidence.statistics?.priceThreshold).toBeCloseTo(32.2);
 
     const medianDataset = makeDataset([
       ...[10, 20, 30, 40, 1_000].map((price) => ({
@@ -106,12 +105,42 @@ describe('manifiesto colaborativo', () => {
       autoApplicable: false,
       evidence: {
         statistics: {
-          firstQuartile: 20,
-          thirdQuartile: 40,
-          interquartileRange: 20,
-          upperLimit: 70,
+          groupAverage: 220,
+          priceDifferencePercent: 780 / 220,
         },
       },
+    });
+    expect(medianSuggestion.evidence.statistics?.priceThreshold).toBeCloseTo(253);
+  });
+
+  it('conserva los grupos colaborativos por descripción cuando el estudio no trae código', () => {
+    const dataset = makeDataset([
+      { codiGo_barras: '', Descripcion: 'PRODUCTO MARCA 500GR', Gramaje: 500, Precio_Unidad: 100 },
+      { codiGo_barras: '', Descripcion: 'PRODUCTO MARCA 500GR', Gramaje: 500, Precio_Unidad: 100 },
+      { codiGo_barras: '', Descripcion: 'PRODUCTO MARCA 500GR', Gramaje: 750, Precio_Unidad: 200 },
+    ]);
+    dataset.hasBarcode = false;
+    const result = onlyRules(
+      validateDataset(dataset, TEST_HIERARCHY, undefined, { hasBarcode: false }),
+      ['R08', 'R25'],
+    );
+
+    const manifest = createCollaborationManifest(dataset, result);
+    const r08Group = manifest.conflictGroups.find((group) => group.ruleId === 'R08');
+    const r25Group = manifest.conflictGroups.find((group) => group.ruleId === 'R25');
+    const r25Suggestion = manifest.tasks
+      .flatMap((task) => task.alerts)
+      .find((alert) => alert.ruleId === 'R25')?.suggestion;
+
+    expect(r08Group?.keyFields).toEqual(['Descripcion']);
+    expect(r08Group?.members.map((member) => member.sourceRow)).toEqual([2, 3, 4]);
+    expect(r25Group?.keyFields).toEqual(['Descripcion']);
+    expect(r25Group?.members.map((member) => member.sourceRow)).toEqual([2, 3, 4]);
+    expect(r25Suggestion).toMatchObject({
+      value: 100,
+      method: 'normal-price-mode',
+      confidence: 'high',
+      evidence: { groupSize: 3 },
     });
   });
 

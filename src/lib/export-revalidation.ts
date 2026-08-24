@@ -138,9 +138,15 @@ export async function revalidateExportOverlay(input: {
   alerts: ReadonlyArray<ExportAlertProjection>;
   decisions: ReadonlyArray<ExportDecisionProjection>;
   hierarchy: HierarchyCatalog;
+  hasBarcode: boolean;
 }): Promise<ExportRevalidationResult> {
-  const overlayDataset = applyOverlayToDataset(input.dataset, input.resolutions);
-  const validation = validateDataset(overlayDataset, input.hierarchy);
+  const overlayDataset = {
+    ...applyOverlayToDataset(input.dataset, input.resolutions),
+    hasBarcode: input.hasBarcode,
+  };
+  const validation = validateDataset(overlayDataset, input.hierarchy, undefined, {
+    hasBarcode: input.hasBarcode,
+  });
   const orthography = generateOrthographyAlerts(overlayDataset);
   const manifest = createCollaborationManifest(overlayDataset, validation, orthography);
   const storedByEvent = new Map(input.alerts.map((alert) => [alert.event_key, alert]));

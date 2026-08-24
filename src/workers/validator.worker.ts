@@ -40,11 +40,12 @@ worker.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
     progress('Leyendo el archivo de facturas…', 12);
     const invoices = parseInvoiceWorkbook(event.data.invoiceBuffer, event.data.invoiceFileName);
 
-    progress('Leyendo el panel PQM…', 28);
+    progress('Leyendo la base general…', 28);
     const dataset = parseWorkbook(event.data.sourceBuffer, event.data.sourceFileName);
+    dataset.hasBarcode = event.data.hasBarcode;
 
     progress('Cruzando facturas y aplicando las reglas…', 52);
-    const validation = validateDataset(dataset, hierarchy, invoices);
+    const validation = validateDataset(dataset, hierarchy, invoices, { hasBarcode: event.data.hasBarcode });
 
     progress('Revisando ortografía y espacios…', 72);
     const orthographyAlerts = generateOrthographyAlerts(dataset);

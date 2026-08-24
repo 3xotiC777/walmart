@@ -8,6 +8,8 @@ export interface SourceRecord {
 
 export interface SourceDataset {
   sourceFile: string;
+  /** Modalidad elegida al iniciar la jornada; se conserva para revalidar y exportar con las mismas reglas. */
+  hasBarcode?: boolean;
   headers: string[];
   outputHeaders: string[];
   records: SourceRecord[];
@@ -51,7 +53,7 @@ export interface HierarchyCatalog {
   entries: Record<string, HierarchyEntry>;
 }
 
-export type RuleStatus = 'Automático' | 'Visual no automatizado' | 'Adicional';
+export type RuleStatus = 'Automático' | 'Visual no automatizado' | 'Adicional' | 'Omitido por modalidad';
 
 export interface RuleDefinition {
   id: string;
@@ -80,10 +82,9 @@ export interface AlertRecord {
   observed: string;
   expected: string;
   detail: string;
-  firstQuartile?: number;
-  thirdQuartile?: number;
-  interquartileRange?: number;
-  upperLimit?: number;
+  groupAverage?: number;
+  priceThreshold?: number;
+  priceDifferencePercent?: number;
   invoiceUrls?: string[];
 }
 
@@ -138,4 +139,5 @@ export interface WorkerRequest {
   sourceFileName: string;
   invoiceBuffer: ArrayBuffer;
   invoiceFileName: string;
+  hasBarcode: boolean;
 }

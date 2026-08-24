@@ -757,6 +757,7 @@ export type Database = {
           delete_after: string
           display_name: string
           finalized_by: string | null
+          has_barcode: boolean
           id: string
           ingestion_finalized_at: string | null
           invoice_object_path: string | null
@@ -790,6 +791,7 @@ export type Database = {
           delete_after: string
           display_name: string
           finalized_by?: string | null
+          has_barcode?: boolean
           id?: string
           ingestion_finalized_at?: string | null
           invoice_object_path?: string | null
@@ -823,6 +825,7 @@ export type Database = {
           delete_after?: string
           display_name?: string
           finalized_by?: string | null
+          has_barcode?: boolean
           id?: string
           ingestion_finalized_at?: string | null
           invoice_object_path?: string | null
@@ -1186,6 +1189,7 @@ export type Database = {
       create_upload: {
         Args: {
           p_display_name: string
+          p_has_barcode?: boolean
           p_invoice_object_path?: string
           p_invoice_sha256_hex?: string
           p_invoice_size_bytes?: number
@@ -1207,6 +1211,7 @@ export type Database = {
           delete_after: string
           display_name: string
           finalized_by: string | null
+          has_barcode: boolean
           id: string
           ingestion_finalized_at: string | null
           invoice_object_path: string | null
@@ -1249,6 +1254,7 @@ export type Database = {
           delete_after: string
           display_name: string
           finalized_by: string | null
+          has_barcode: boolean
           id: string
           ingestion_finalized_at: string | null
           invoice_object_path: string | null
@@ -1299,6 +1305,7 @@ export type Database = {
           delete_after: string
           display_name: string
           finalized_by: string | null
+          has_barcode: boolean
           id: string
           ingestion_finalized_at: string | null
           invoice_object_path: string | null
@@ -1394,6 +1401,7 @@ export type Database = {
           delete_after: string
           display_name: string
           finalized_by: string | null
+          has_barcode: boolean
           id: string
           ingestion_finalized_at: string | null
           invoice_object_path: string | null
@@ -1440,6 +1448,7 @@ export type Database = {
           delete_after: string
           display_name: string
           finalized_by: string | null
+          has_barcode: boolean
           id: string
           ingestion_finalized_at: string | null
           invoice_object_path: string | null
@@ -2031,4 +2040,3 @@ export const Constants = {
     },
   },
 } as const
-

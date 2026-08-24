@@ -1,9 +1,10 @@
 import * as XLSX from 'xlsx';
-import { RULE_DEFINITIONS } from './rules';
+import { getRuleDefinitions } from './rules';
 import { ORTHOGRAPHY_RULE, type SourceDataset } from './types';
 
 export interface ReportUpload {
   display_name: string;
+  has_barcode: boolean;
   total_rows: number;
   task_count: number;
   alert_count: number;
@@ -22,10 +23,9 @@ export interface ReportTask {
 }
 
 interface ReportStatistics {
-  firstQuartile?: number;
-  thirdQuartile?: number;
-  interquartileRange?: number;
-  upperLimit?: number;
+  groupAverage?: number;
+  priceThreshold?: number;
+  priceDifferencePercent?: number;
 }
 
 export interface ReportAlert {
@@ -117,7 +117,7 @@ export function buildCollaborativeReportWorkbook(input: {
   }
 
   const resolvedTasks = input.tasks.filter((task) => task.status === 'resolved').length;
-  const allDefinitions = [...RULE_DEFINITIONS, ORTHOGRAPHY_RULE];
+  const allDefinitions = [...getRuleDefinitions(input.upload.has_barcode), ORTHOGRAPHY_RULE];
   const summary = [
     ['Métrica', 'Valor'],
     ['Jornada', input.upload.display_name],
@@ -154,7 +154,7 @@ export function buildCollaborativeReportWorkbook(input: {
   const alertHeader = [
     'Regla', 'Fila_Excel', 'Row-Id', 'Id_Dn W', 'Código', 'Descripción',
     'Columna_Afectada', 'Valor_Original', 'Valor_Esperado_o_Conflictos', 'Detalle',
-    'Cuartil_1', 'Cuartil_3', 'Rango_Intercuartil', 'Limite_Superior', 'Foto_Factura',
+    'Promedio_Grupo', 'Umbral_15_Por_Ciento', 'Porcentaje_Diferencia_Promedio', 'Foto_Factura',
     'Solución_Propuesta', 'Confianza', 'Método', 'Responsable', 'Estado',
     'Decisión', 'Valor_Final', 'Fecha_Decisión',
   ];
@@ -168,8 +168,8 @@ export function buildCollaborativeReportWorkbook(input: {
     return [
       alert.rule_code, row?.excel_row, row?.row_id, row?.id_dn_w, row?.barcode, row?.description,
       alert.affected_field, alert.original_value, alert.expected_or_conflicts, alert.detail,
-      statistics?.firstQuartile ?? null, statistics?.thirdQuartile ?? null,
-      statistics?.interquartileRange ?? null, statistics?.upperLimit ?? null,
+      statistics?.groupAverage ?? null, statistics?.priceThreshold ?? null,
+      statistics?.priceDifferencePercent ?? null,
       invoiceUrls.join('\n'), alert.suggested_value, alert.suggestion_confidence,
       alert.suggestion_method,
       block?.assigned_to ? nameByUser.get(block.assigned_to) ?? block.assigned_to : 'Sin asignar',
@@ -201,14 +201,22 @@ export function buildCollaborativeReportWorkbook(input: {
   const workbook = XLSX.utils.book_new();
   workbook.Props = { Title: `Reporte colaborativo ${input.upload.display_name}`, Author: 'PQM Control Walmart', CreatedDate: new Date() };
   XLSX.utils.book_append_sheet(workbook, aoaSheet(summary, [14, 34, 24, 20, 14, 14, 14, 76]), 'Resumen');
-  const alertsSheet = aoaSheet([alertHeader, ...alertRows], [12, 12, 18, 18, 18, 38, 24, 24, 35, 70, 14, 14, 18, 18, 60, 32, 14, 22, 26, 14, 22, 28, 22]);
+  const alertsSheet = aoaSheet([alertHeader, ...alertRows], [12, 12, 18, 18, 18, 38, 24, 24, 35, 70, 20, 22, 28, 60, 32, 14, 22, 26, 14, 22, 28, 22]);
   alertRows.forEach((row, index) => {
-    const firstInvoice = String(row[14] ?? '').split('\n').filter(Boolean)[0];
-    const cell = alertsSheet[XLSX.utils.encode_cell({ r: index + 1, c: 14 })];
+    const firstInvoice = String(row[13] ?? '').split('\n').filter(Boolean)[0];
+    const cell = alertsSheet[XLSX.utils.encode_cell({ r: index + 1, c: 13 })];
     if (cell && firstInvoice) cell.l = { Target: firstInvoice, Tooltip: 'Abrir la primera factura asociada' };
   });
+  for (let row = 1; row <= alertRows.length; row += 1) {
+    const averageCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 10 })];
+    const thresholdCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 11 })];
+    const differenceCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 12 })];
+    if (averageCell) averageCell.z = '#,##0.0000';
+    if (thresholdCell) thresholdCell.z = '#,##0.0000';
+    if (differenceCell) differenceCell.z = '0.00%';
+  }
   XLSX.utils.book_append_sheet(workbook, alertsSheet, 'Alertas');
   XLSX.utils.book_append_sheet(workbook, aoaSheet([taskHeader, ...taskRows], [16, 28, 90, 12, ...sourceHeaders.map((header) => Math.min(48, Math.max(12, header.length + 2))), 26, 14]), 'Registros_a_revisar');
-  XLSX.utils.book_append_sheet(workbook, aoaSheet([alertHeader, ...orthographyRows], [12, 12, 18, 18, 18, 38, 24, 24, 35, 70, 14, 14, 18, 18, 60, 32, 14, 22, 26, 14, 22, 28, 22]), 'Ortografía');
+  XLSX.utils.book_append_sheet(workbook, aoaSheet([alertHeader, ...orthographyRows], [12, 12, 18, 18, 18, 38, 24, 24, 35, 70, 20, 22, 28, 60, 32, 14, 22, 26, 14, 22, 28, 22]), 'Ortografía');
   return XLSX.write(workbook, { type: 'array', bookType: 'xlsx', compression: true, cellDates: true }) as ArrayBuffer;
 }

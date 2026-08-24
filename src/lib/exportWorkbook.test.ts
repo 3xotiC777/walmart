@@ -39,15 +39,15 @@ describe('Excel de salida', () => {
       2,
     ]);
     const alertHeaders = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Alertas, { header: 1 })[0];
-    expect(alertHeaders).toContain('Cuartil_1');
-    expect(alertHeaders).toContain('Cuartil_3');
-    expect(alertHeaders).toContain('Rango_Intercuartil');
-    expect(alertHeaders.indexOf('Foto_Factura')).toBe(alertHeaders.indexOf('Limite_Superior') + 1);
-    expect(alertHeaders).not.toContain('Promedio');
-    expect(alertHeaders).not.toContain('Desviacion_Estandar');
+    expect(alertHeaders).toContain('Promedio_Combinacion');
+    expect(alertHeaders).toContain('Umbral_15_Por_Ciento');
+    expect(alertHeaders).toContain('Porcentaje_Diferencia_Promedio');
+    expect(alertHeaders.indexOf('Foto_Factura')).toBe(alertHeaders.indexOf('Porcentaje_Diferencia_Promedio') + 1);
+    expect(alertHeaders).not.toContain('Cuartil_1');
+    expect(alertHeaders).not.toContain('Limite_Superior');
     const alertRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas);
     expect(alertRows[0].Foto_Factura).toBe('https://example.com/factura-1.jpg\nhttps://example.com/factura-2.jpg');
-    expect(workbook.Sheets.Alertas.Q2.l?.Target).toBe('https://example.com/factura-1.jpg');
+    expect(workbook.Sheets.Alertas.P2.l?.Target).toBe('https://example.com/factura-1.jpg');
     const orthography = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas_Ortografia);
     expect(orthography).toHaveLength(2);
     expect(orthography[1]).toMatchObject({
@@ -58,5 +58,72 @@ describe('Excel de salida', () => {
     const reviewed = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Registros_a_revisar);
     expect(reviewed).toHaveLength(1);
     expect(reviewed[0].codiGo_barras).toBe('00123');
+  });
+
+  it('exporta el porcentaje de diferencia de R25 como valor porcentual ordenable', () => {
+    const dataset = makeDataset([
+      { codiGo_barras: 'P1', Descripcion: 'PRODUCTO MARCA', Precio_Unidad: 10 },
+      { codiGo_barras: 'P1', Descripcion: 'PRODUCTO MARCA', Precio_Unidad: 10 },
+      { codiGo_barras: 'P1', Descripcion: 'PRODUCTO MARCA', Precio_Unidad: 10 },
+      { codiGo_barras: 'P1', Descripcion: 'PRODUCTO MARCA', Precio_Unidad: 100 },
+    ]);
+    const validation = validateDataset(dataset, TEST_HIERARCHY);
+    const output = buildOutputWorkbook(dataset, validation);
+    const workbook = XLSX.read(output, { type: 'array', cellNF: true });
+    const alertRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas);
+    const priceAlert = alertRows.find((row) => row.Regla === 'R25');
+
+    expect(priceAlert).toMatchObject({
+      Promedio_Combinacion: 32.5,
+      Umbral_15_Por_Ciento: 37.375,
+    });
+    expect(priceAlert?.Porcentaje_Diferencia_Promedio).toBeCloseTo(67.5 / 32.5);
+    const priceAlertIndex = alertRows.findIndex((row) => row.Regla === 'R25');
+    expect(workbook.Sheets.Alertas[XLSX.utils.encode_cell({ r: priceAlertIndex + 1, c: 14 })].z).toBe('0.00%');
+  });
+
+  it('documenta en el Excel las reglas adaptadas al modo sin código', () => {
+    const dataset = makeDataset([
+      {
+        codiGo_barras: '',
+        Descripcion: 'PRODUCTO MARCA 500GR',
+        Gramaje: 500,
+        unidad_de_Medida: 'GRAMOS',
+        codiGo_estandar: 'STD-A',
+        Precio_Unidad: 100,
+      },
+      {
+        codiGo_barras: '',
+        Descripcion: 'PRODUCTO MARCA 500GR',
+        Gramaje: 500,
+        unidad_de_Medida: 'GRAMOS',
+        codiGo_estandar: 'STD-A',
+        Precio_Unidad: 100,
+      },
+      {
+        codiGo_barras: '',
+        Descripcion: 'PRODUCTO MARCA 500GR',
+        Gramaje: 750,
+        unidad_de_Medida: 'UNIDADES',
+        codiGo_estandar: 'STD-B',
+        Precio_Unidad: 200,
+      },
+    ]);
+    const validation = validateDataset(dataset, TEST_HIERARCHY, undefined, { hasBarcode: false });
+    const workbook = XLSX.read(buildOutputWorkbook(dataset, validation), { type: 'array' });
+    const summary = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumen, { header: 1 });
+    const alerts = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas);
+
+    expect(summary.find((row) => row[0] === 'R10')?.slice(1, 6)).toEqual([
+      'Descripción → código estándar',
+      'Automático',
+      3,
+      1,
+      'Una descripción solo puede tener un código estándar no vacío.',
+    ]);
+    expect(summary.find((row) => row[0] === 'R25')?.[1]).toBe('Precio atípico por descripción');
+    const adaptedAlerts = alerts.filter((row) => ['R08', 'R09', 'R10', 'R25'].includes(String(row.Regla)));
+    expect(adaptedAlerts).toHaveLength(4);
+    expect(adaptedAlerts.every((row) => row.Clave_Validada === 'Descripcion: PRODUCTO MARCA 500GR')).toBe(true);
   });
 });
