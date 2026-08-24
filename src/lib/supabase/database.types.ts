@@ -1049,6 +1049,34 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      browse_review_tasks: {
+        Args: {
+          p_page?: number
+          p_page_size?: number
+          p_rule?: string | null
+          p_search?: string | null
+          p_sort?: string
+          p_status?: Database["public"]["Enums"]["review_status"] | null
+          p_upload_id: string
+        }
+        Returns: {
+          alert_count: number
+          barcode: string | null
+          confirmed_correct_count: number
+          corrected_cell_count: number
+          created_at: string
+          description: string | null
+          excel_row: number
+          id: string
+          id_dn_w: string | null
+          primary_rule: string | null
+          row_id: string | null
+          status: Database["public"]["Enums"]["review_status"]
+          total_count: number
+          validation_alerts: Json
+          version: number
+        }[]
+      }
       add_related_row_to_block: {
         Args: {
           p_block_id: string
@@ -1348,6 +1376,15 @@ export type Database = {
           locked_until: string
           must_change_pin: boolean
           user_id: string
+        }[]
+      }
+      get_upload_assignment_metrics: {
+        Args: { p_upload_id: string }
+        Returns: {
+          alert_count: number
+          orthography_count: number
+          pending_task_count: number
+          task_count: number
         }[]
       }
       ingest_validation_batch: {

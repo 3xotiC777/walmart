@@ -11,21 +11,24 @@ const format = (value: unknown) => Number(value ?? 0).toLocaleString('es-CO');
 export default async function DashboardPage() {
   const viewer = await requireViewer();
   const supabase = await createServerSupabaseClient();
-  const { data: uploads } = await supabase.from('uploads').select('*').order('created_at', { ascending: false }).limit(1);
-  const upload = uploads?.[0] as Record<string, unknown> | undefined;
+  const { data: uploads } = await supabase
+    .from('uploads')
+    .select('id, display_name, status, total_rows, task_count, pending_task_count, alert_count')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  const upload = uploads?.[0];
 
   let assignedTasks: number | null = null;
   let assignedPending: number | null = null;
   let assignedAlerts: number | null = null;
   let assignedOrthography: number | null = null;
   if (viewer.role === 'validator' && upload) {
-    const [{ count: total }, { count: pending }, { count: alertTotal }, { count: orthographyTotal }] = await Promise.all([
-      supabase.from('review_tasks').select('id', { count: 'exact', head: true }).eq('upload_id', upload.id),
-      supabase.from('review_tasks').select('id', { count: 'exact', head: true }).eq('upload_id', upload.id).neq('status', 'resolved'),
-      supabase.from('validation_alerts').select('id', { count: 'exact', head: true }).eq('upload_id', upload.id),
-      supabase.from('validation_alerts').select('id', { count: 'exact', head: true }).eq('upload_id', upload.id).eq('category', 'orthography'),
-    ]);
-    assignedTasks = total ?? 0; assignedPending = pending ?? 0; assignedAlerts = alertTotal ?? 0; assignedOrthography = orthographyTotal ?? 0;
+    const { data } = await supabase.rpc('get_upload_assignment_metrics', { p_upload_id: upload.id });
+    const metrics = data?.[0];
+    assignedTasks = Number(metrics?.task_count ?? 0);
+    assignedPending = Number(metrics?.pending_task_count ?? 0);
+    assignedAlerts = Number(metrics?.alert_count ?? 0);
+    assignedOrthography = Number(metrics?.orthography_count ?? 0);
   }
 
   const totalRows = Number(upload?.total_rows ?? 0);

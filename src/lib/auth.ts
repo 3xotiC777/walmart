@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from './supabase/server';
 
@@ -17,7 +18,7 @@ export interface Viewer {
   sessionIssuedAt: number;
 }
 
-export async function getViewer(options: { allowPendingPin?: boolean } = {}): Promise<Viewer | null> {
+const loadViewer = cache(async (allowPendingPin: boolean): Promise<Viewer | null> => {
   const supabase = await createServerSupabaseClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
   const userId = claimsData?.claims?.sub;
@@ -56,7 +57,11 @@ export async function getViewer(options: { allowPendingPin?: boolean } = {}): Pr
     pinResetAt,
     sessionIssuedAt,
   };
-  return viewer.mustChangePin && !options.allowPendingPin ? null : viewer;
+  return viewer.mustChangePin && !allowPendingPin ? null : viewer;
+});
+
+export async function getViewer(options: { allowPendingPin?: boolean } = {}): Promise<Viewer | null> {
+  return loadViewer(Boolean(options.allowPendingPin));
 }
 
 export async function requireViewer(role?: WorkspaceRole): Promise<Viewer> {
