@@ -367,14 +367,22 @@ function groupDescriptor(
     records = dataset.records.filter((record) => recordMatches(record, keyFields, keyNormalized));
     keyValues = { 'Row-Id': collaborationValue(sourceRecord.fields['Row-Id']) };
   } else if (alert.source.ruleId === 'R15' && sourceRecord) {
-    keyFields = ['codiGo_barras'];
+    keyFields = dataset.hasBarcode === false ? ['Descripcion'] : ['codiGo_barras'];
     targetField = 'Descripcion';
-    keyNormalized = [normalizeText(sourceRecord.fields.codiGo_barras)];
+    keyNormalized = keyFields.map((field) => normalizeText(sourceRecord.fields[field]));
     records = dataset.records.filter((record) => recordMatches(record, keyFields, keyNormalized));
-    keyValues = { codiGo_barras: collaborationValue(sourceRecord.fields.codiGo_barras) };
+    keyValues = Object.fromEntries(keyFields.map((field) => [field, collaborationValue(sourceRecord.fields[field])]));
   } else {
     keyFields = ['__sourceRow'];
     targetField = dataset.headers.includes(alert.source.field) ? alert.source.field : null;
+    keyNormalized = [String(alert.source.sourceRow)];
+    records = sourceRecord ? [sourceRecord] : [];
+    keyValues = { __sourceRow: alert.source.sourceRow };
+  }
+
+  if (keyFields[0] !== '__sourceRow' && keyNormalized.every((value) => !value)) {
+    keyFields = ['__sourceRow'];
+    targetField = dataset.headers.includes(alert.source.field) ? alert.source.field : targetField;
     keyNormalized = [String(alert.source.sourceRow)];
     records = sourceRecord ? [sourceRecord] : [];
     keyValues = { __sourceRow: alert.source.sourceRow };

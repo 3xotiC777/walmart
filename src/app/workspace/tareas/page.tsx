@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { SearchIcon, TasksIcon } from '@/components/icons';
 import { MetricStrip } from '@/components/metrics';
 import { requireViewer } from '@/lib/auth';
+import { CURRENT_JOURNEY_STATUSES } from '@/lib/current-journey';
 import { RULE_DEFINITIONS } from '@/lib/rules';
 import {
   buildTaskListHref,
@@ -65,7 +66,8 @@ export default async function TasksPage({
   const { data: uploads } = await supabase
     .from('uploads')
     .select('id, display_name, status, task_count, pending_task_count, alert_count, orthography_count')
-    .in('status', ['active', 'completed', 'ready', 'assigning'])
+    .eq('workspace_id', viewer.workspaceId)
+    .in('status', [...CURRENT_JOURNEY_STATUSES])
     .order('created_at', { ascending: false })
     .limit(1);
   const upload = uploads?.[0];

@@ -1,5 +1,6 @@
 import { TeamManager } from '@/components/team-manager';
 import { requireViewer } from '@/lib/auth';
+import { CURRENT_JOURNEY_STATUSES } from '@/lib/current-journey';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/database.types';
 
@@ -12,7 +13,7 @@ export default async function TeamPage() {
   const supabase = await createServerSupabaseClient();
   const [{ data }, { data: uploads }] = await Promise.all([
     supabase.from('workspace_members').select('user_id, role, is_active, profiles!workspace_members_user_id_fkey(username, display_name, must_change_pin)').eq('workspace_id', viewer.workspaceId).order('created_at'),
-    supabase.from('uploads').select('id').eq('workspace_id', viewer.workspaceId).in('status', ['active', 'completed']).order('created_at', { ascending: false }).limit(1),
+    supabase.from('uploads').select('id').eq('workspace_id', viewer.workspaceId).in('status', [...CURRENT_JOURNEY_STATUSES]).order('created_at', { ascending: false }).limit(1),
   ]);
   const uploadId = uploads?.[0]?.id;
   const productivityResponse = uploadId
