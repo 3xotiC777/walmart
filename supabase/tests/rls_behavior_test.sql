@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(45);
+select extensions.plan(48);
 
 -- Identidades aisladas para probar RLS y RPC con el mismo rol que usa PostgREST.
 insert into auth.users (id, email)
@@ -130,6 +130,11 @@ select set_config(
 select extensions.is((select count(*) from public.assignment_blocks where upload_id = 'c3300000-0000-4000-8000-000000000001'), 2::bigint, 'el líder ve todos los bloques');
 select extensions.is((select count(*) from public.workspace_members where workspace_id = 'b2200000-0000-4000-8000-000000000001'), 4::bigint, 'el líder ve todo el equipo');
 select extensions.is((select count(*) from storage.objects where bucket_id = 'pqm-private' and name like '%panel-prueba-rls.xlsx'), 1::bigint, 'el líder puede leer el panel original');
+select extensions.is(
+  (select sum(alert_count) from public.get_upload_rule_metrics('c3300000-0000-4000-8000-000000000001')),
+  2::numeric,
+  'el líder cuenta las alertas de todas las reglas de la jornada'
+);
 reset role;
 
 -- Validador A: solo su membresía, su bloque, su tarea y su alerta.
@@ -157,6 +162,16 @@ select extensions.is(
   (select alert_count from public.get_upload_assignment_metrics('c3300000-0000-4000-8000-000000000001')),
   1::bigint,
   'las métricas solo cuentan la alerta asignada al validador'
+);
+select extensions.is(
+  (select array_agg(rule_code order by rule_code) from public.get_upload_rule_metrics('c3300000-0000-4000-8000-000000000001')),
+  array['R01']::text[],
+  'el desglose por regla no revela reglas asignadas a otra persona'
+);
+select extensions.is(
+  (select sum(pending_alert_count) from public.get_upload_rule_metrics('c3300000-0000-4000-8000-000000000001')),
+  1::numeric,
+  'el desglose solo cuenta la alerta pendiente del validador'
 );
 select extensions.is(
   (select id::text from public.browse_review_tasks(

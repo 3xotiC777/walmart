@@ -53,7 +53,9 @@ export function AssignmentBoard({ uploadId, initialUploadVersion, initialBlocks,
     if (blocks.length !== expectedBlockCount || new Set(blocks.map((block) => block.id)).size !== expectedBlockCount) { setError('La pantalla no contiene todos los bloques. Actualízala antes de publicar.'); return; }
     if (blocks.some((block) => !block.assignedTo)) { setError('Todos los bloques necesitan un responsable.'); return; }
     const assignments = blocks.map((block) => ({ block_id: block.id, assigned_to: block.assignedTo, expected_version: block.version }));
-    if (await action({ action: 'publish', assignments, expectedUploadVersion: uploadVersion })) { router.push('/workspace/tareas'); router.refresh(); }
+    if (await action({ action: 'publish', assignments, expectedUploadVersion: uploadVersion })) {
+      router.replace('/workspace/tareas');
+    }
   }
 
   if (blocks.length === 0) {

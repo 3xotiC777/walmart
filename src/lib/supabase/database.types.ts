@@ -1387,6 +1387,17 @@ export type Database = {
           task_count: number
         }[]
       }
+      get_upload_rule_metrics: {
+        Args: { p_upload_id: string }
+        Returns: {
+          affected_task_count: number
+          alert_count: number
+          category: Database["public"]["Enums"]["alert_category"]
+          pending_alert_count: number
+          pending_task_count: number
+          rule_code: string
+        }[]
+      }
       ingest_validation_batch: {
         Args: { p_batch_key: string; p_payload: Json; p_upload_id: string }
         Returns: Json
