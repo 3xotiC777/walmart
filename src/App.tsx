@@ -243,6 +243,7 @@ export default function App() {
           return;
         }
         setResult(message.payload);
+        setHasBarcode(message.payload.dataset.hasBarcode ?? hasBarcode);
         setStatus('success');
         worker.terminate();
         workerRef.current = null;

@@ -85,6 +85,7 @@ button { cursor: pointer; }
 .auth-help { display: flex; align-items: flex-start; gap: 7px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .auth-help svg { width: 14px; flex: 0 0 auto; }
 .form-error { margin: 0; padding: 11px 13px; color: #9d3326; background: #fff0ed; border: 1px solid #ffd0c9; border-radius: 9px; font-size: 12px; }
+.form-notice { margin: 0; padding: 11px 13px; color: #0f5b46; background: #edf9f4; border: 1px solid #b7e4d4; border-radius: 9px; font-size: 12px; }
 .decision-inline-message { flex-basis: 100%; margin-top: 10px; }
 
 .workspace-shell { min-height: 100vh; display: grid; grid-template-columns: 222px minmax(0, 1fr); }
