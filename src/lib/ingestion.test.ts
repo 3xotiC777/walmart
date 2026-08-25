@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createCollaborationManifest } from './collaboration';
-import { buildIngestionPlan, type IngestionPlan } from './ingestion';
+import {
+  buildIngestionPlan,
+  ingestionBatchRequestByteLength,
+  MAX_INGESTION_REQUEST_BYTES,
+  packIngestionBatches,
+  type IngestionPlan,
+} from './ingestion';
 import { validateDataset } from './rules';
 import { makeDataset, TEST_HIERARCHY } from './testHelpers';
 import type { ValidationResult } from './types';
@@ -24,6 +30,23 @@ function canonicalPayload(plan: IngestionPlan): string {
 }
 
 describe('plan de ingesta colaborativa', () => {
+  it('divide por bytes sin perder ni duplicar elementos cuando el contenido es voluminoso', () => {
+    const values = Array.from({ length: 9 }, (_, index) => ({
+      id: index,
+      detail: `${index}-` + 'á'.repeat(300_000),
+    }));
+    const batches = packIngestionBatches('alerts', values, 800);
+
+    expect(batches.length).toBeGreaterThan(1);
+    expect(batches.flatMap((item) => item.payload.alerts)).toEqual(values);
+    expect(batches.every((item) => ingestionBatchRequestByteLength(item) <= MAX_INGESTION_REQUEST_BYTES)).toBe(true);
+  });
+
+  it('rechaza un elemento individual que no se pueda guardar con seguridad', () => {
+    expect(() => packIngestionBatches('alerts', [{ detail: 'á'.repeat(1_100_000) }], 800))
+      .toThrow('Un elemento de alerts supera por sí solo el tamaño seguro de guardado.');
+  });
+
   it('mantiene claves externas y hash de manifiesto estables para reintentos idempotentes', async () => {
     const dataset = makeDataset([
       { codiGo_barras: '001', Descripcion: 'PRODUCTO MARCA' },

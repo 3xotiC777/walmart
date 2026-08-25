@@ -22,6 +22,12 @@ export interface IngestionPlan {
   manifestHash: string;
 }
 
+// Vercel rechaza cuerpos mayores a 4,5 MB. Mantener cada lote por debajo de
+// 2 MB deja margen para encabezados y cambios futuros en la estructura.
+export const MAX_INGESTION_REQUEST_BYTES = 2_000_000;
+const BATCH_KEY_PLACEHOLDER = '00000000-0000-4000-8000-000000000000';
+const textEncoder = new TextEncoder();
+
 function jsonValue(value: unknown): CollaborationValue {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return value.toISOString();
@@ -34,14 +40,50 @@ function display(value: unknown): string | null {
   return normalized === null ? null : String(normalized);
 }
 
-function chunk<T>(values: readonly T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
-  return chunks;
-}
-
 function batch(payload: Record<string, unknown[]>): IngestionBatch {
   return { key: crypto.randomUUID(), payload };
+}
+
+export function ingestionBatchRequestByteLength(item: IngestionBatch): number {
+  return textEncoder.encode(JSON.stringify({ batchKey: item.key, payload: item.payload })).byteLength;
+}
+
+export function packIngestionBatches<T>(payloadKey: string, values: readonly T[], maxItems: number): IngestionBatch[] {
+  if (values.length === 0) return [];
+  const emptyEnvelopeBytes = textEncoder.encode(JSON.stringify({
+    batchKey: BATCH_KEY_PLACEHOLDER,
+    payload: { [payloadKey]: [] },
+  })).byteLength;
+  const batches: IngestionBatch[] = [];
+  let current: T[] = [];
+  let currentBytes = emptyEnvelopeBytes;
+
+  const flush = () => {
+    if (current.length === 0) return;
+    const item = batch({ [payloadKey]: current });
+    if (ingestionBatchRequestByteLength(item) > MAX_INGESTION_REQUEST_BYTES) {
+      throw new Error(`El lote ${payloadKey} supera el tamaño seguro de guardado.`);
+    }
+    batches.push(item);
+    current = [];
+    currentBytes = emptyEnvelopeBytes;
+  };
+
+  for (const value of values) {
+    const serializedValue = JSON.stringify(value) ?? 'null';
+    const valueBytes = textEncoder.encode(serializedValue).byteLength;
+    const separatorBytes = current.length > 0 ? 1 : 0;
+    if (current.length > 0 && (current.length >= maxItems || currentBytes + separatorBytes + valueBytes > MAX_INGESTION_REQUEST_BYTES)) {
+      flush();
+    }
+    if (currentBytes + valueBytes > MAX_INGESTION_REQUEST_BYTES) {
+      throw new Error(`Un elemento de ${payloadKey} supera por sí solo el tamaño seguro de guardado.`);
+    }
+    current.push(value);
+    currentBytes += (current.length > 1 ? 1 : 0) + valueBytes;
+  }
+  flush();
+  return batches;
 }
 
 export async function buildIngestionPlan(
@@ -178,13 +220,13 @@ export async function buildIngestionPlan(
   const invoiceLinks = [...invoiceLinksByIdentity.values()];
 
   const batches: IngestionBatch[] = [
-    ...chunk(rows, 800).map((values) => batch({ rows: values })),
-    ...chunk(groups, 500).map((values) => batch({ groups: values })),
-    ...chunk(groupMembers, 1_500).map((values) => batch({ group_members: values })),
-    ...chunk(blocks, 500).map((values) => batch({ blocks: values })),
-    ...chunk(tasks, 800).map((values) => batch({ tasks: values })),
-    ...chunk(alerts, 800).map((values) => batch({ alerts: values })),
-    ...chunk(invoiceLinks, 800).map((values) => batch({ invoices: values })),
+    ...packIngestionBatches('rows', rows, 800),
+    ...packIngestionBatches('groups', groups, 500),
+    ...packIngestionBatches('group_members', groupMembers, 1_500),
+    ...packIngestionBatches('blocks', blocks, 500),
+    ...packIngestionBatches('tasks', tasks, 800),
+    ...packIngestionBatches('alerts', alerts, 800),
+    ...packIngestionBatches('invoices', invoiceLinks, 800),
   ];
   const manifestHash = await sha256Hex(JSON.stringify({ source: manifest.sourceFile, headers: manifest.headers, tasks: manifest.tasks, blocks: manifest.blocks }));
   return { batches, storedRowCount: rows.length, taskCount: tasks.length, alertCount: alerts.length, manifestHash };
