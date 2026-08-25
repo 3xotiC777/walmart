@@ -103,6 +103,7 @@ export type Database = {
         Row: {
           alert_count: number
           assigned_to: string | null
+          assignment_version: number
           block_key: string
           created_at: string
           external_key: string
@@ -121,6 +122,7 @@ export type Database = {
         Insert: {
           alert_count?: number
           assigned_to?: string | null
+          assignment_version?: number
           block_key: string
           created_at?: string
           external_key: string
@@ -139,6 +141,7 @@ export type Database = {
         Update: {
           alert_count?: number
           assigned_to?: string | null
+          assignment_version?: number
           block_key?: string
           created_at?: string
           external_key?: string
@@ -748,6 +751,7 @@ export type Database = {
       uploads: {
         Row: {
           alert_count: number
+          assignment_version: number
           assignments_published_at: string | null
           completed_at: string | null
           confirmed_correct_count: number
@@ -782,6 +786,7 @@ export type Database = {
         }
         Insert: {
           alert_count?: number
+          assignment_version?: number
           assignments_published_at?: string | null
           completed_at?: string | null
           confirmed_correct_count?: number
@@ -816,6 +821,7 @@ export type Database = {
         }
         Update: {
           alert_count?: number
+          assignment_version?: number
           assignments_published_at?: string | null
           completed_at?: string | null
           confirmed_correct_count?: number
@@ -1049,34 +1055,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      browse_review_tasks: {
-        Args: {
-          p_page?: number
-          p_page_size?: number
-          p_rule?: string | null
-          p_search?: string | null
-          p_sort?: string
-          p_status?: Database["public"]["Enums"]["review_status"] | null
-          p_upload_id: string
-        }
-        Returns: {
-          alert_count: number
-          barcode: string | null
-          confirmed_correct_count: number
-          corrected_cell_count: number
-          created_at: string
-          description: string | null
-          excel_row: number
-          id: string
-          id_dn_w: string | null
-          primary_rule: string | null
-          row_id: string | null
-          status: Database["public"]["Enums"]["review_status"]
-          total_count: number
-          validation_alerts: Json
-          version: number
-        }[]
-      }
       add_related_row_to_block: {
         Args: {
           p_block_id: string
@@ -1138,6 +1116,34 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      browse_review_tasks: {
+        Args: {
+          p_page?: number
+          p_page_size?: number
+          p_rule?: string
+          p_search?: string
+          p_sort?: string
+          p_status?: Database["public"]["Enums"]["review_status"]
+          p_upload_id: string
+        }
+        Returns: {
+          alert_count: number
+          barcode: string
+          confirmed_correct_count: number
+          corrected_cell_count: number
+          created_at: string
+          description: string
+          excel_row: number
+          id: string
+          id_dn_w: string
+          primary_rule: string
+          row_id: string
+          status: Database["public"]["Enums"]["review_status"]
+          total_count: number
+          validation_alerts: Json
+          version: number
+        }[]
       }
       claim_bootstrap_leader: {
         Args: { p_display_name: string; p_token: string; p_username: string }
@@ -1230,6 +1236,7 @@ export type Database = {
         }
         Returns: {
           alert_count: number
+          assignment_version: number
           assignments_published_at: string | null
           completed_at: string | null
           confirmed_correct_count: number
@@ -1273,6 +1280,7 @@ export type Database = {
         Args: { p_message: string; p_upload_id: string }
         Returns: {
           alert_count: number
+          assignment_version: number
           assignments_published_at: string | null
           completed_at: string | null
           confirmed_correct_count: number
@@ -1324,6 +1332,7 @@ export type Database = {
         }
         Returns: {
           alert_count: number
+          assignment_version: number
           assignments_published_at: string | null
           completed_at: string | null
           confirmed_correct_count: number
@@ -1387,6 +1396,17 @@ export type Database = {
           task_count: number
         }[]
       }
+      get_upload_rule_metrics: {
+        Args: { p_upload_id: string }
+        Returns: {
+          affected_task_count: number
+          alert_count: number
+          category: Database["public"]["Enums"]["alert_category"]
+          pending_alert_count: number
+          pending_task_count: number
+          rule_code: string
+        }[]
+      }
       get_upload_team_productivity: {
         Args: { p_upload_id: string }
         Returns: {
@@ -1400,17 +1420,6 @@ export type Database = {
           rows_corrected: number
           tasks_resolved: number
           user_id: string
-        }[]
-      }
-      get_upload_rule_metrics: {
-        Args: { p_upload_id: string }
-        Returns: {
-          affected_task_count: number
-          alert_count: number
-          category: Database["public"]["Enums"]["alert_category"]
-          pending_alert_count: number
-          pending_task_count: number
-          rule_code: string
         }[]
       }
       ingest_validation_batch: {
@@ -1431,6 +1440,20 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: undefined
       }
+      preview_pending_reassignment_versioned: {
+        Args: {
+          p_expected_upload_version: number
+          p_upload_id: string
+          p_validator_ids: string[]
+        }
+        Returns: {
+          assignee_id: string
+          block_assignment_version: number
+          block_id: string
+          cumulative_weight: number
+          remaining_weight: number
+        }[]
+      }
       propose_balanced_assignments: {
         Args: { p_upload_id: string; p_validator_ids?: string[] }
         Returns: {
@@ -1440,6 +1463,18 @@ export type Database = {
         }[]
       }
       propose_balanced_assignments_versioned: {
+        Args: {
+          p_expected_upload_version: number
+          p_upload_id: string
+          p_validator_ids: string[]
+        }
+        Returns: {
+          assignee_id: string
+          block_id: string
+          cumulative_weight: number
+        }[]
+      }
+      propose_balanced_assignments_versioned_legacy: {
         Args: {
           p_expected_upload_version: number
           p_upload_id: string
@@ -1455,6 +1490,7 @@ export type Database = {
         Args: { p_assignments?: Json; p_upload_id: string }
         Returns: {
           alert_count: number
+          assignment_version: number
           assignments_published_at: string | null
           completed_at: string | null
           confirmed_correct_count: number
@@ -1502,6 +1538,57 @@ export type Database = {
         }
         Returns: {
           alert_count: number
+          assignment_version: number
+          assignments_published_at: string | null
+          completed_at: string | null
+          confirmed_correct_count: number
+          corrected_cell_count: number
+          created_at: string
+          created_by: string
+          delete_after: string
+          display_name: string
+          finalized_by: string | null
+          has_barcode: boolean
+          id: string
+          ingestion_finalized_at: string | null
+          invoice_object_path: string | null
+          invoice_sha256: string | null
+          invoice_size_bytes: number | null
+          manifest_hash: string | null
+          orthography_count: number
+          panel_object_path: string
+          panel_sha256: string
+          panel_size_bytes: number
+          pending_task_count: number
+          processing_error: string | null
+          scrubbed_at: string | null
+          source_headers: Json
+          source_sheet: string
+          status: Database["public"]["Enums"]["upload_status"]
+          task_count: number
+          total_rows: number
+          updated_at: string
+          version: number
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "uploads"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      publish_pending_reassignment_versioned: {
+        Args: {
+          p_assignments: Json
+          p_client_mutation_id: string
+          p_expected_upload_version: number
+          p_upload_id: string
+          p_validator_ids: string[]
+        }
+        Returns: {
+          alert_count: number
+          assignment_version: number
           assignments_published_at: string | null
           completed_at: string | null
           confirmed_correct_count: number

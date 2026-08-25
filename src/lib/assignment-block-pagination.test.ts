@@ -5,12 +5,14 @@ function block(index: number): AssignmentBlockRow {
   return {
     id: `block-${index.toString().padStart(4, '0')}`,
     block_key: `key-${index}`,
+    status: 'published',
     alert_count: 1,
     member_count: 1,
     invoice_count: 0,
     weight: 1,
     assigned_to: index % 2 === 0 ? 'validator-1' : 'validator-2',
     version: 3,
+    assignment_version: 2,
   };
 }
 
