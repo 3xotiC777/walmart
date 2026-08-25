@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(66);
+select extensions.plan(67);
 
 select extensions.ok(
   (select count(*) = 16
@@ -279,6 +279,15 @@ select extensions.ok(
      'private.get_upload_rule_metrics_scoped(uuid)'::regprocedure::oid
    ])),
   'los helpers privados autorizan el alcance como security definer'
+);
+
+select extensions.ok(
+  position(
+    'for update nowait' in lower(pg_get_functiondef(
+      'public.resolve_alert_guarded(uuid,integer,public.decision_kind,text,uuid,text)'::regprocedure
+    ))
+  ) > 0,
+  'las decisiones fallan rápido ante concurrencia en vez de agotar el pool'
 );
 
 select extensions.ok(

@@ -1,4 +1,5 @@
 import { getViewer } from '@/lib/auth';
+import { alertMutationError, shouldRetryAlertMutation } from '@/lib/alert-decision-context';
 import { jsonError, validPositiveInteger, validUuid } from '@/lib/http';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
@@ -30,14 +31,34 @@ export async function POST(request: Request, context: { params: Promise<{ alertI
   const decisions: Record<string, string> = { apply: 'apply_suggestion', manual: 'manual_edit', correct: 'confirmed_correct' };
   const decision = decisions[String(body.action)];
   if (!decision) return jsonError('Decisión no reconocida.');
-  const { data, error } = await supabase.rpc('resolve_alert_guarded', {
+  const parameters = {
     p_alert_id: alertId,
     p_expected_version: body.expectedVersion,
     p_decision: decision,
     p_resolved_value: body.action === 'manual' ? String(body.value ?? '') : null,
     p_client_mutation_id: body.mutationId,
     p_note: body.note ? String(body.note) : null,
-  });
-  if (error) return jsonError(error.message, error.code === '40001' ? 409 : 400);
+  };
+  let attempt = 0;
+  let result = await supabase.rpc('resolve_alert_guarded', parameters);
+  while (result.error && shouldRetryAlertMutation(result.error.code, attempt)) {
+    await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+    attempt += 1;
+    result = await supabase.rpc('resolve_alert_guarded', parameters);
+  }
+  const { data, error } = result;
+  if (error) {
+    const translated = alertMutationError(error.code, error.message);
+    console.error('[alerts.resolve] RPC failed', {
+      alertId,
+      code: error.code,
+      attempts: attempt + 1,
+      retryable: translated.retryable,
+    });
+    return jsonError(translated.message, translated.status, {
+      code: error.code,
+      retryable: translated.retryable,
+    });
+  }
   return NextResponse.json({ ok: true, alert: data });
 }

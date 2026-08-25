@@ -23,9 +23,9 @@ export function AppShell({ viewer, children }: { viewer: Viewer; children: React
     <div className="workspace-shell">
       <AutoRefresh />
       <aside className="side-rail">
-        <Link className="workspace-brand" href="/workspace"><span>PQM</span><strong>Control<br/>Walmart</strong></Link>
+        <Link className="workspace-brand" href="/workspace" prefetch={false}><span>PQM</span><strong>Control<br/>Walmart</strong></Link>
         <nav aria-label="Navegación principal">
-          {links.map(({ href, label, icon: Icon }) => <Link href={href} key={href}><Icon />{label}</Link>)}
+          {links.map(({ href, label, icon: Icon }) => <Link href={href} key={href} prefetch={false}><Icon />{label}</Link>)}
         </nav>
         <form action="/api/auth/logout" method="post"><button className="rail-logout" type="submit"><LogoutIcon />Salir</button></form>
       </aside>
