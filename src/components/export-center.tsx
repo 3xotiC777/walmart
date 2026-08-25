@@ -7,6 +7,7 @@ import { createBrowserSupabaseClient } from '@/lib/supabase/client';
 import type { parseWorkbook } from '@/lib/parser';
 import type { WorkbookCellCorrection, WorkbookSuggestion } from '@/lib/workbookExports';
 import type { HierarchyCatalog } from '@/lib/types';
+import { buildCorrectionTraceabilityValues, CORRECTION_TRACEABILITY_HEADER } from '@/lib/correction-attribution';
 
 interface UploadInfo { id: string; display_name: string; panel_object_path: string; has_barcode: boolean; total_rows: number; task_count: number; alert_count: number; orthography_count: number; pending_task_count: number; corrected_cell_count: number; confirmed_correct_count: number; created_at: string }
 interface PreflightSummary {
@@ -105,8 +106,8 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
       fetchAll('review_tasks', 'id, status, source_row_id, source_rows(excel_row,row_id,id_dn_w,barcode,description), assignment_blocks(assigned_to)', upload.id),
       fetchAll('validation_alerts', 'id, event_key, task_id, rule_code, category, affected_field, original_value, expected_or_conflicts, detail, suggested_column_name, suggested_column_index, suggested_value, suggestion_confidence, suggestion_method, suggestion_evidence, can_auto_apply, evidence_fingerprint, status', upload.id),
       fetchAll('alert_decisions', 'id, alert_id, decision, resolved_value, evidence_fingerprint, decided_by, decided_at, superseded_at', upload.id),
-      fetchAll('profiles', 'user_id, display_name', undefined, 'user_id'),
-      fetchAll('cell_resolutions', 'id, source_row_id, column_index, field_name, original_value, resolved_value, last_decision_id, source_rows(excel_row)', upload.id),
+      fetchAll('profiles', 'user_id, username, display_name', undefined, 'user_id'),
+      fetchAll('cell_resolutions', 'id, source_row_id, column_index, field_name, original_value, resolved_value, last_decision_id, created_by, updated_by, source_rows(excel_row)', upload.id),
       includeReportContext ? fetchAll('invoice_links', 'id, id_dn_w, external_url', upload.id) : Promise.resolve([]),
       includeReportContext ? fetchAll('conflict_groups', 'id, rule_code, affected_row_count', upload.id) : Promise.resolve([]),
     ]);
@@ -218,8 +219,32 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
             const value = coerceWorkbookCorrectionValue(resolution.resolved_value, originalCell, field);
             return { excelRow, columnIndex: resolution.column_index, value };
           });
+          const decisionById = new Map(data.decisions.map((decision) => [Number(decision.id), decision]));
+          const traceability = buildCorrectionTraceabilityValues(data.resolutions.map((resolution) => {
+            const source = Array.isArray(resolution.source_rows) ? resolution.source_rows[0] : resolution.source_rows;
+            const actorUserId = resolution.last_decision_id === null
+              ? (resolution.updated_by ?? resolution.created_by ?? null)
+              : (decisionById.get(Number(resolution.last_decision_id))?.decided_by ?? null);
+            return {
+              excelRow: Number(source?.excel_row),
+              columnIndex: Number(resolution.column_index),
+              fieldName: dataset.headers[resolution.column_index] ?? resolution.field_name ?? '',
+              actorUserId,
+            };
+          }), data.profiles.map((profile) => ({
+            userId: profile.user_id,
+            displayName: profile.display_name,
+            username: profile.username,
+          })));
           await assertSnapshotVersion(data.snapshot.version);
-          save(patchOriginalWorkbook(originalBuffer, corrections), buildCorrectedWorkbookFileName(requiresDraft ? Math.max(1, Number(data.snapshot.pending_task_count)) : 0));
+          save(patchOriginalWorkbook(originalBuffer, corrections, {
+            appendedColumn: {
+              columnIndex: dataset.headers.length,
+              header: CORRECTION_TRACEABILITY_HEADER,
+              values: traceability,
+              width: 42,
+            },
+          }), buildCorrectedWorkbookFileName(requiresDraft ? Math.max(1, Number(data.snapshot.pending_task_count)) : 0));
         }
       }
     } catch (cause) { setPreflight(null); setError(cause instanceof Error ? cause.message : 'No fue posible generar el archivo.'); }
@@ -229,7 +254,7 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
   const cards = [
     { id: 'report' as const, title: 'Reporte de alertas', copy: 'Resumen, alertas, registros, ortografía, sugerencia, responsable y decisión.', button: 'Descargar reporte', icon: AlertIcon },
     { id: 'suggestions' as const, title: 'Base con sugerencias', copy: 'Todas las filas originales y una columna sugerida junto a cada campo evaluado.', button: 'Descargar sugerencias', icon: SparkIcon },
-    { id: 'corrected' as const, title: upload.pending_task_count ? 'Excel corregido · borrador' : 'Excel corregido · validación previa', copy: 'Reaplica todas las reglas sobre las correcciones antes de decidir si el archivo puede llamarse Final, preservando sus tablas dinámicas.', button: 'Validar y descargar', icon: CheckIcon },
+    { id: 'corrected' as const, title: upload.pending_task_count ? 'Excel corregido · borrador' : 'Excel corregido · validación previa', copy: 'Reaplica las reglas, conserva las tablas dinámicas y añade una columna que identifica quién realizó cada cambio.', button: 'Validar y descargar', icon: CheckIcon },
   ];
   return <><div className="split-grid export-grid">{cards.map((card) => { const Icon = card.icon; return <section className="panel export-card" key={card.id}><div className="panel-body"><span className={`export-card-icon ${card.id}`}><Icon/></span><p className="overline">ARCHIVO INDEPENDIENTE</p><h2>{card.title}</h2><p>{card.copy}</p><button className="button button-primary" disabled={busy !== null} onClick={() => void run(card.id)} type="button"><DownloadIcon/>{busy === card.id ? 'Revalidando…' : card.button}</button></div></section>; })}</div>{preflight && <section className="panel" aria-live="polite"><div className="panel-header"><div><p className="overline">REVALIDACIÓN DEL OVERLAY</p><h2>{preflight.safeForFinal ? 'Las correcciones superan la validación final' : 'La jornada aún solo permite un Borrador'}</h2><p>{preflight.safeForFinal ? 'No reaparecieron alertas y no quedan tareas pendientes en el corte exportado.' : `${preflight.pendingTasks.toLocaleString('es-CO')} tareas pendientes · ${preflight.remainingAlertCount.toLocaleString('es-CO')} alertas activas · ${preflight.invalidConfirmedCorrectCount.toLocaleString('es-CO')} confirmaciones con evidencia modificada.`}</p><p>Motor ejecutado: {preflight.validationAlertCount.toLocaleString('es-CO')} alertas R/EST/JER y {preflight.orthographyAlertCount.toLocaleString('es-CO')} alertas ORT.</p></div><span className={`status ${preflight.safeForFinal ? 'resolved' : 'draft'}`}>{preflight.safeForFinal ? 'APTO PARA FINAL' : 'SOLO BORRADOR'}</span></div>{preflight.alerts.length > 0 && <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Regla</th><th>Fila</th><th>Campo</th><th>Resultado de la revalidación</th></tr></thead><tbody>{preflight.alerts.map((alert) => <tr key={alert.eventKey}><td><span className="rule-badge">{alert.ruleId}</span></td><td className="mono">{alert.sourceRow}</td><td>{alert.field || 'Revisión manual'}</td><td><strong>{alert.reasonLabel}</strong><small>{alert.detail}</small></td></tr>)}</tbody></table>{preflight.remainingAlertCount > preflight.alerts.length && <footer className="page-footer"><span>Se muestran {preflight.alerts.length.toLocaleString('es-CO')} de {preflight.remainingAlertCount.toLocaleString('es-CO')} alertas activas.</span></footer>}</div>}</section>}{error && <p className="form-error" role="alert">{error}</p>}</>;
 }

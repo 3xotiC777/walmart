@@ -1387,6 +1387,21 @@ export type Database = {
           task_count: number
         }[]
       }
+      get_upload_team_productivity: {
+        Args: { p_upload_id: string }
+        Returns: {
+          alerts_resolved: number
+          assigned_alert_count: number
+          assigned_task_count: number
+          cells_changed: number
+          completed_assignment_task_count: number
+          confirmed_correct: number
+          pending_task_count: number
+          rows_corrected: number
+          tasks_resolved: number
+          user_id: string
+        }[]
+      }
       get_upload_rule_metrics: {
         Args: { p_upload_id: string }
         Returns: {

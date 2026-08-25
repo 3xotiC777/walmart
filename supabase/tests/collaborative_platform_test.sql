@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(60);
+select extensions.plan(66);
 
 select extensions.ok(
   (select count(*) = 16
@@ -233,6 +233,32 @@ select extensions.ok(
 select extensions.ok(
   has_function_privilege('authenticated', 'public.get_upload_rule_metrics(uuid)', 'execute'),
   'authenticated puede consultar el desglose por regla protegido'
+);
+select extensions.ok(
+  to_regprocedure('public.get_upload_team_productivity(uuid)') is not null,
+  'existe la RPC de productividad y asignación por integrante'
+);
+select extensions.ok(
+  to_regprocedure('private.get_upload_team_productivity_scoped(uuid)') is not null,
+  'existe el helper privado de productividad del equipo'
+);
+select extensions.ok(
+  not has_function_privilege('anon', 'public.get_upload_team_productivity(uuid)', 'execute'),
+  'anon no puede consultar la productividad del equipo'
+);
+select extensions.ok(
+  has_function_privilege('authenticated', 'public.get_upload_team_productivity(uuid)', 'execute'),
+  'authenticated puede invocar la RPC, que valida el liderazgo internamente'
+);
+select extensions.ok(
+  not (select procedure.prosecdef from pg_proc procedure
+       where procedure.oid = 'public.get_upload_team_productivity(uuid)'::regprocedure::oid),
+  'la RPC pública de productividad es security invoker'
+);
+select extensions.ok(
+  (select procedure.prosecdef from pg_proc procedure
+   where procedure.oid = 'private.get_upload_team_productivity_scoped(uuid)'::regprocedure::oid),
+  'el helper privado de productividad autoriza como security definer'
 );
 select extensions.ok(
   (select bool_and(not procedure.prosecdef)

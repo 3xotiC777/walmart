@@ -94,6 +94,34 @@ function sharedFormulaXlsx(): ArrayBuffer {
   return asArrayBuffer(zipSync(entries));
 }
 
+function traceabilityXlsx(): { bytes: ArrayBuffer; entries: Record<string, Uint8Array> } {
+  const source = syntheticXlsx();
+  const entries = { ...source.entries };
+  entries['xl/workbook.xml'] = encoder.encode(
+    decoder.decode(entries['xl/workbook.xml']).replace(
+      '<calcPr',
+      '<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">&apos;pqm consolidado&apos;!$A$1:$C$2</definedName></definedNames><calcPr',
+    ),
+  );
+  let sheet = decoder.decode(entries['xl/worksheets/sheet1.xml']);
+  sheet = sheet.replace(
+    '<sheetData>',
+    '<dimension ref="A1:C2"/><cols><col min="4" max="4" width="0" style="17" hidden="1" customWidth="1"/></cols><sheetData>',
+  );
+  sheet = sheet.replace(
+    '<row r="1"><c r="A1"',
+    '<row r="1" spans="1:3"><c r="A1"',
+  ).replace(
+    '</is></c></row><row r="2">',
+    '</is></c><c r="C1" s="16" t="inlineStr"><is><t>Notas</t></is></c></row><row r="2" spans="1:3">',
+  ).replace(
+    '</sheetData></worksheet>',
+    '</sheetData><autoFilter ref="A1:C2"/></worksheet>',
+  );
+  entries['xl/worksheets/sheet1.xml'] = encoder.encode(sheet);
+  return { bytes: asArrayBuffer(zipSync(entries)), entries };
+}
+
 describe('base con sugerencias', () => {
   it('inserta columnas adyacentes, conserva originales y omite propuestas no automáticas', () => {
     const dataset: WorkbookSourceDataset = {
@@ -253,6 +281,37 @@ describe('parche OOXML del libro original', () => {
     expect(sheet).toContain('<c r="B4"><f>A4*2</f><v>8</v></c>');
     expect(sheet).toContain('<c r="B5"><f>A5*2</f><v>10</v></c>');
     expect(sheet).not.toContain('si="7"');
+  });
+
+  it('anexa una columna visible de trazabilidad sin ampliar los orígenes de pivots', () => {
+    const source = traceabilityXlsx();
+    const patched = unzipSync(new Uint8Array(patchOriginalWorkbook(source.bytes, [
+      { excelRow: 2, columnIndex: 0, value: '00999' },
+    ], {
+      appendedColumn: {
+        columnIndex: 3,
+        header: 'Trazabilidad_de_cambios',
+        values: [{ excelRow: 2, value: 'Categoria_Wm → Diego | Marca_Wm → Mayumi' }],
+        width: 42,
+      },
+    })));
+
+    const sheet = decoder.decode(patched['xl/worksheets/sheet1.xml']);
+    expect(sheet).toContain('<dimension ref="A1:D2"/>');
+    expect(sheet).toMatch(/<col\b[^>]*min="4"[^>]*max="4"[^>]*width="42"[^>]*\/>/);
+    expect(sheet).not.toMatch(/<col\b[^>]*min="4"[^>]*hidden="1"/);
+    expect(sheet).toContain('<row r="1" spans="1:4">');
+    expect(sheet).toContain('<row r="2" spans="1:4">');
+    expect(sheet).toContain('<c r="D1" s="16" t="inlineStr"><is><t xml:space="preserve">Trazabilidad_de_cambios</t></is></c>');
+    expect(sheet).toContain('<c r="D2" s="3" t="inlineStr"><is><t xml:space="preserve">Categoria_Wm → Diego | Marca_Wm → Mayumi</t></is></c>');
+    expect(sheet).toContain('<autoFilter ref="A1:D2"/>');
+
+    const workbook = decoder.decode(patched['xl/workbook.xml']);
+    expect(workbook).toContain("'pqm consolidado'!$A$1:$D$2");
+    expect(patched['xl/pivotCache/pivotCacheRecords1.xml']).toEqual(
+      source.entries['xl/pivotCache/pivotCacheRecords1.xml'],
+    );
+    expect(patched['xl/worksheets/sheet2.xml']).toEqual(source.entries['xl/worksheets/sheet2.xml']);
   });
 
   it('devuelve una copia idéntica cuando no existen cambios aceptados', () => {
