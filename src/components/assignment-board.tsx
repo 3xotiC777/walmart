@@ -243,7 +243,6 @@ export function AssignmentBoard({
       setAssignmentVersion(returnedVersion);
     }
     setProposalReady(true);
-    if (!redistributing) router.refresh();
   }
 
   async function publish() {

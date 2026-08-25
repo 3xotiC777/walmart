@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowIcon, FileIcon, TasksIcon, UploadCloudIcon, UsersIcon } from '@/components/icons';
 import { MetricStrip } from '@/components/metrics';
 import { requireViewer } from '@/lib/auth';
+import { CURRENT_JOURNEY_STATUSES } from '@/lib/current-journey';
 import { buildRulePriorities } from '@/lib/rule-priority';
 import { getRuleDefinitions } from '@/lib/rules';
 import type { Database } from '@/lib/supabase/database.types';
@@ -20,6 +21,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const { data: uploads } = await supabase
     .from('uploads')
     .select('id, display_name, status, total_rows, task_count, pending_task_count, alert_count, orthography_count, has_barcode')
+    .eq('workspace_id', viewer.workspaceId)
+    .in('status', [...CURRENT_JOURNEY_STATUSES])
     .order('created_at', { ascending: false })
     .limit(1);
   const upload = uploads?.[0];

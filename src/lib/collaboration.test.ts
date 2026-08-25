@@ -8,7 +8,7 @@ import {
 import { generateOrthographyAlerts } from './orthography';
 import { validateDataset } from './rules';
 import { makeDataset, TEST_HIERARCHY } from './testHelpers';
-import type { ValidationResult } from './types';
+import type { AlertRecord, ValidationResult } from './types';
 
 function onlyRules(result: ValidationResult, ruleIds: string[]): ValidationResult {
   const alerts = result.alerts.filter((alert) => ruleIds.includes(alert.ruleId));
@@ -17,6 +17,23 @@ function onlyRules(result: ValidationResult, ruleIds: string[]): ValidationResul
     ...result,
     alerts,
     reviewedRecords: result.reviewedRecords.filter((reviewed) => rows.has(reviewed.record.excelRow)),
+  };
+}
+
+function manualAlert(ruleId: string, sourceRow: number, field = 'Descripcion'): AlertRecord {
+  return {
+    ruleId,
+    ruleName: ruleId,
+    sourceRow,
+    rowId: `ROW-${sourceRow - 1}`,
+    surveyId: `ID-${sourceRow - 1}`,
+    barcode: '001',
+    description: `DESCRIPCION ${sourceRow}`,
+    key: `FILA ${sourceRow}`,
+    field,
+    observed: 'ACTUAL',
+    expected: 'ESPERADO',
+    detail: `Alerta ${ruleId} de prueba.`,
   };
 }
 
@@ -259,7 +276,7 @@ describe('manifiesto colaborativo', () => {
     });
   });
 
-  it('conecta en un bloque solo tareas alertadas relacionadas y no convierte el contexto en tareas', () => {
+  it('conecta en un bloque las tareas alertadas que comparten contexto sin convertir ese contexto en tareas', () => {
     const dataset = makeDataset([
       { codiGo_barras: 'A', Descripcion: 'PRODUCTO A MARCA', Categoria_Wm: 'CATEGORIA A' },
       { codiGo_barras: 'A', Descripcion: 'PRODUCTO A MARCA', Categoria_Wm: 'CATEGORIA B' },
@@ -279,6 +296,45 @@ describe('manifiesto colaborativo', () => {
     expect(linked?.relatedSourceRows).toEqual([2, 3, 4]);
     expect(independent?.sourceRows).toEqual([7]);
     expect(manifest.blocks).toHaveLength(2);
+  });
+
+  it('agrupa R15 por descripción cuando la jornada no tiene código de barras', () => {
+    const dataset = {
+      ...makeDataset([
+        { codiGo_barras: '', Descripcion: 'PRODUCTO UNO', Marca_Wm: 'MARCA AUSENTE' },
+        { codiGo_barras: '', Descripcion: 'PRODUCTO DOS', Marca_Wm: 'MARCA AUSENTE' },
+        { codiGo_barras: '', Descripcion: 'PRODUCTO TRES', Marca_Wm: 'MARCA AUSENTE' },
+      ]),
+      hasBarcode: false,
+    };
+    const base = validateDataset(dataset, TEST_HIERARCHY);
+    const result: ValidationResult = {
+      ...base,
+      alerts: [manualAlert('R15', 2), manualAlert('R30', 3), manualAlert('R30', 4)],
+      reviewedRecords: [],
+    };
+
+    const manifest = createCollaborationManifest(dataset, result);
+    const group = manifest.conflictGroups.find((item) => item.ruleId === 'R15');
+
+    expect(group?.keyFields).toEqual(['Descripcion']);
+    expect(group?.members.map((member) => member.sourceRow)).toEqual([2]);
+    expect(manifest.blocks.map((block) => block.sourceRows)).toEqual([[2], [3], [4]]);
+  });
+
+  it('convierte una clave relacional completamente vacía en un grupo por fila', () => {
+    const dataset = makeDataset([{ codiGo_barras: '', Descripcion: '' }]);
+    const base = validateDataset(dataset, TEST_HIERARCHY);
+    const result: ValidationResult = {
+      ...base,
+      alerts: [manualAlert('R15', 2)],
+      reviewedRecords: [],
+    };
+
+    const group = createCollaborationManifest(dataset, result).conflictGroups[0];
+
+    expect(group.keyFields).toEqual(['__sourceRow']);
+    expect(group.members.map((member) => member.sourceRow)).toEqual([2]);
   });
 
   it('reparte bloques indivisibles con LPT y recalcula métricas sin cifras fijas', () => {
@@ -307,6 +363,15 @@ describe('manifiesto colaborativo', () => {
       ['B-4', 'VAL-1'],
     ]);
     expect(balance.validatorLoads.map((load) => load.totalWeight)).toEqual([17, 13]);
+
+    const threeValidatorBalance = balanceCollaborationBlocks(
+      [block('T-8', 8), block('T-7', 7), block('T-6', 6), block('T-5', 5), block('T-4', 4)],
+      ['VAL-1', 'VAL-2', 'VAL-3'],
+    );
+    expect(new Set(threeValidatorBalance.assignments.map((item) => item.validatorId))).toEqual(
+      new Set(['VAL-1', 'VAL-2', 'VAL-3']),
+    );
+    expect(threeValidatorBalance.validatorLoads.every((load) => load.blockCount > 0)).toBe(true);
 
     const dataset = makeDataset([{ cantidad_comprada: 2, Precio_Unidad: 10, Precio_Total_Preciador: 10 }]);
     const result = onlyRules(validateDataset(dataset, TEST_HIERARCHY), ['R28']);
