@@ -100,10 +100,25 @@ export interface WorkbookCellCorrection {
   value: WorkbookCellValue;
   /** Defaults to the patcher's sheetName option (`pqm consolidado`). */
   sheetName?: string;
+  /** Internal formatting hint used when a new audit cell is appended. */
+  copyStyleFromLeft?: boolean;
+}
+
+export interface WorkbookAppendedColumn {
+  /** Zero-based position of the new column. Existing columns are never shifted. */
+  columnIndex: number;
+  header: string;
+  values: readonly { excelRow: number; value: string }[];
+  /** Defaults to the patcher's sheetName option (`pqm consolidado`). */
+  sheetName?: string;
+  /** Visible width in Excel character units. */
+  width?: number;
 }
 
 export interface PatchWorkbookOptions {
   sheetName?: string;
+  /** Optional audit column appended after the original source fields. */
+  appendedColumn?: WorkbookAppendedColumn;
   /** Mark pivot cache definitions to refresh when Excel opens the result. */
   refreshPivotCaches?: boolean;
   /** Compression level for the output ZIP. The uncompressed entry bytes stay intact. */
@@ -554,6 +569,32 @@ function renderCell(
   return `${normalizedOpening}${serialized.inner}</c>`;
 }
 
+function renderInsertedCell(
+  rowXml: string,
+  address: string,
+  correction: WorkbookCellCorrection,
+): string {
+  if (!correction.copyStyleFromLeft) return renderCell(address, correction.value);
+  const targetColumn = correction.columnIndex;
+  let nearestColumn = -1;
+  let nearestStyle: string | undefined;
+  for (const match of rowXml.matchAll(/<c\b[^>]*(?:\/>|>[\s\S]*?<\/c>)/gi)) {
+    const opening = match[0].match(/^<c\b[^>]*[>]/i)?.[0] ?? match[0];
+    const existingAddress = getXmlAttribute(opening, 'r');
+    if (!existingAddress) continue;
+    const existingColumn = columnLettersToIndex(existingAddress);
+    const style = getXmlAttribute(opening, 's');
+    if (existingColumn < targetColumn && existingColumn > nearestColumn && style !== undefined) {
+      nearestColumn = existingColumn;
+      nearestStyle = style;
+    }
+  }
+  const styledCell = nearestStyle === undefined
+    ? undefined
+    : `<c r="${address}" s="${xmlEscape(nearestStyle)}"/>`;
+  return renderCell(address, correction.value, styledCell);
+}
+
 function insertCellIntoRow(rowXml: string, address: string, cellXml: string): string {
   if (/\/>\s*$/.test(rowXml)) {
     const opening = rowXml.replace(/\/>\s*$/, '>');
@@ -656,13 +697,172 @@ function patchWorksheetXml(
     for (const { address, correction } of rowCorrections.sort(
       (left, right) => left.correction.columnIndex - right.correction.columnIndex,
     )) {
-      result = insertCellIntoRow(result, address, renderCell(address, correction.value));
+      result = insertCellIntoRow(result, address, renderInsertedCell(result, address, correction));
     }
     pendingByRow.delete(rowNumber);
     return result;
   });
 
   return insertMissingRows(patched, pendingByRow);
+}
+
+function extendRangeReference(
+  reference: string,
+  columnIndex: number,
+  minimumLastRow?: number,
+): string {
+  const endMatch = reference.match(/(\$?)([A-Z]{1,3})(\$?)([1-9]\d*)$/i);
+  if (!endMatch || endMatch.index === undefined) return reference;
+  const currentColumn = columnLettersToIndex(endMatch[2]);
+  const currentRow = Number(endMatch[4]);
+  const nextColumn = Math.max(currentColumn, columnIndex);
+  const nextRow = Math.max(currentRow, minimumLastRow ?? currentRow);
+  const nextEnd = `${endMatch[1]}${columnIndexToLetters(nextColumn)}${endMatch[3]}${nextRow}`;
+  if (!reference.includes(':') && (nextColumn !== currentColumn || nextRow !== currentRow)) {
+    return `${reference}:${nextEnd}`;
+  }
+  return `${reference.slice(0, endMatch.index)}${nextEnd}`;
+}
+
+function patchAppendedColumnDefinition(
+  sheetXml: string,
+  columnIndex: number,
+  width: number,
+): string {
+  const columnNumber = columnIndex + 1;
+  const colsMatch = sheetXml.match(/<cols\b[^>]*\/>|<cols\b[^>]*>[\s\S]*?<\/cols>/i)?.[0];
+  const visibleColumn = (sourceTag?: string): string => {
+    let tag = sourceTag ?? `<col min="${columnNumber}" max="${columnNumber}"/>`;
+    tag = setTagAttribute(tag, 'min', String(columnNumber));
+    tag = setTagAttribute(tag, 'max', String(columnNumber));
+    tag = setTagAttribute(tag, 'width', String(width));
+    tag = setTagAttribute(tag, 'customWidth', '1');
+    tag = removeTagAttribute(tag, 'hidden');
+    tag = removeTagAttribute(tag, 'bestFit');
+    return tag;
+  };
+
+  if (!colsMatch || /\/\>\s*$/.test(colsMatch)) {
+    const replacement = `<cols>${visibleColumn()}</cols>`;
+    if (colsMatch) return sheetXml.replace(colsMatch, replacement);
+    const sheetDataIndex = sheetXml.search(/<sheetData\b/i);
+    if (sheetDataIndex < 0) throw new Error('La hoja OOXML no contiene el elemento sheetData.');
+    return `${sheetXml.slice(0, sheetDataIndex)}${replacement}${sheetXml.slice(sheetDataIndex)}`;
+  }
+
+  let found = false;
+  const bodyStart = colsMatch.indexOf('>') + 1;
+  const bodyEnd = colsMatch.lastIndexOf('</cols>');
+  const opening = colsMatch.slice(0, bodyStart);
+  const body = colsMatch.slice(bodyStart, bodyEnd).replace(/<col\b[^>]*\/>/gi, (tag) => {
+    const minimum = Number(getXmlAttribute(tag, 'min'));
+    const maximum = Number(getXmlAttribute(tag, 'max'));
+    if (found || !Number.isInteger(minimum) || !Number.isInteger(maximum)
+      || columnNumber < minimum || columnNumber > maximum) return tag;
+    found = true;
+    const fragments: string[] = [];
+    if (minimum < columnNumber) {
+      fragments.push(setTagAttribute(setTagAttribute(tag, 'min', String(minimum)), 'max', String(columnNumber - 1)));
+    }
+    fragments.push(visibleColumn(tag));
+    if (columnNumber < maximum) {
+      fragments.push(setTagAttribute(setTagAttribute(tag, 'min', String(columnNumber + 1)), 'max', String(maximum)));
+    }
+    return fragments.join('');
+  });
+  const replacement = `${opening}${body}${found ? '' : visibleColumn()}</cols>`;
+  return sheetXml.replace(colsMatch, replacement);
+}
+
+function patchAppendedColumnMetadata(
+  sheetXml: string,
+  appendedColumn: WorkbookAppendedColumn,
+): string {
+  const targetRows = new Set([1, ...appendedColumn.values.map((item) => item.excelRow)]);
+  const maximumRow = Math.max(...targetRows);
+  let patched = sheetXml.replace(/<dimension\b[^>]*\/>/i, (tag) => {
+    const reference = getXmlAttribute(tag, 'ref');
+    return reference
+      ? setTagAttribute(tag, 'ref', extendRangeReference(reference, appendedColumn.columnIndex, maximumRow))
+      : tag;
+  });
+  patched = patched.replace(/<autoFilter\b[^>]*(?:\/>|>)/gi, (tag) => {
+    const reference = getXmlAttribute(tag, 'ref');
+    return reference
+      ? setTagAttribute(tag, 'ref', extendRangeReference(reference, appendedColumn.columnIndex))
+      : tag;
+  });
+  patched = patched.replace(/<row\b[^>]*(?:\/>|>)/gi, (tag) => {
+    const rowNumber = Number(getXmlAttribute(tag, 'r'));
+    if (!targetRows.has(rowNumber)) return tag;
+    const current = getXmlAttribute(tag, 'spans');
+    const start = Number(current?.split(':')[0]);
+    const end = Number(current?.split(':')[1]);
+    const nextStart = Number.isInteger(start) && start > 0 ? Math.min(start, 1) : 1;
+    const nextEnd = Number.isInteger(end) && end > 0
+      ? Math.max(end, appendedColumn.columnIndex + 1)
+      : appendedColumn.columnIndex + 1;
+    return setTagAttribute(tag, 'spans', `${nextStart}:${nextEnd}`);
+  });
+  return patchAppendedColumnDefinition(
+    patched,
+    appendedColumn.columnIndex,
+    appendedColumn.width ?? 42,
+  );
+}
+
+function formulaSheetName(token: string): string {
+  const trimmed = token.trim();
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/''/g, "'");
+  }
+  return trimmed;
+}
+
+function extendFilterDatabaseDefinedName(
+  workbookXml: string,
+  sheetName: string,
+  columnIndex: number,
+): string {
+  return workbookXml.replace(/<definedName\b[^>]*>[\s\S]*?<\/definedName>/gi, (definedName) => {
+    const opening = definedName.match(/^<definedName\b[^>]*>/i)?.[0];
+    if (!opening || getXmlAttribute(opening, 'name') !== '_xlnm._FilterDatabase') return definedName;
+    const content = definedName.slice(opening.length, definedName.toLowerCase().lastIndexOf('</definedname>'));
+    const decoded = xmlDecode(content);
+    const separator = decoded.lastIndexOf('!');
+    if (separator < 0 || formulaSheetName(decoded.slice(0, separator)).localeCompare(
+      sheetName,
+      undefined,
+      { sensitivity: 'accent' },
+    ) !== 0) return definedName;
+    const range = decoded.slice(separator + 1);
+    const extended = extendRangeReference(range, columnIndex);
+    if (extended === range) return definedName;
+    return `${opening}${xmlEscape(`${decoded.slice(0, separator + 1)}${extended}`)}</definedName>`;
+  });
+}
+
+function validateAppendedColumn(appendedColumn: WorkbookAppendedColumn): void {
+  if (!Number.isInteger(appendedColumn.columnIndex)
+    || appendedColumn.columnIndex < 0
+    || appendedColumn.columnIndex > MAX_EXCEL_COLUMN_INDEX) {
+    throw new Error(`Índice de columna adicional inválido: ${appendedColumn.columnIndex}.`);
+  }
+  if (!appendedColumn.header.trim()) throw new Error('La columna adicional requiere un encabezado.');
+  if (appendedColumn.width !== undefined
+    && (!Number.isFinite(appendedColumn.width) || appendedColumn.width <= 0 || appendedColumn.width > 255)) {
+    throw new Error('El ancho de la columna adicional debe estar entre 0 y 255.');
+  }
+  const rows = new Set<number>();
+  for (const item of appendedColumn.values) {
+    if (!Number.isInteger(item.excelRow) || item.excelRow < 2) {
+      throw new Error(`Fila de trazabilidad inválida: ${item.excelRow}.`);
+    }
+    if (rows.has(item.excelRow)) {
+      throw new Error(`Hay más de un valor para la columna adicional en la fila ${item.excelRow}.`);
+    }
+    rows.add(item.excelRow);
+  }
 }
 
 function removeCalculationChain(entries: Record<string, Uint8Array>, workbookPath: string): void {
@@ -702,11 +902,33 @@ export function patchOriginalWorkbook(
   corrections: readonly WorkbookCellCorrection[],
   options: PatchWorkbookOptions = {},
 ): ArrayBuffer {
-  corrections.forEach(validateCorrection);
+  const appendedColumn = options.appendedColumn;
+  if (appendedColumn) validateAppendedColumn(appendedColumn);
+  const appendedSheet = appendedColumn?.sheetName ?? options.sheetName ?? DEFAULT_SOURCE_SHEET;
+  const appendedCorrections: WorkbookCellCorrection[] = appendedColumn
+    ? [
+      {
+        excelRow: 1,
+        columnIndex: appendedColumn.columnIndex,
+        value: appendedColumn.header,
+        sheetName: appendedSheet,
+        copyStyleFromLeft: true,
+      },
+      ...appendedColumn.values.map((item) => ({
+        excelRow: item.excelRow,
+        columnIndex: appendedColumn.columnIndex,
+        value: item.value,
+        sheetName: appendedSheet,
+        copyStyleFromLeft: true,
+      })),
+    ]
+    : [];
+  const effectiveCorrections = [...corrections, ...appendedCorrections];
+  effectiveCorrections.forEach(validateCorrection);
   const input = originalWorkbook instanceof Uint8Array
     ? originalWorkbook
     : new Uint8Array(originalWorkbook);
-  if (corrections.length === 0) return copyToArrayBuffer(input);
+  if (effectiveCorrections.length === 0) return copyToArrayBuffer(input);
   let entries: Record<string, Uint8Array>;
   try {
     entries = unzipSync(input);
@@ -719,7 +941,8 @@ export function patchOriginalWorkbook(
   const sheetCorrections = new Map<string, WorkbookCellCorrection[]>();
   const correctedCells = new Set<string>();
   let removedFormula = false;
-  for (const correction of corrections) {
+  let appendedActualSheet: string | undefined;
+  for (const correction of effectiveCorrections) {
     const sheetName = correction.sheetName ?? options.sheetName ?? DEFAULT_SOURCE_SHEET;
     const correctedCell = `${sheetName.toLocaleUpperCase()}:${correctionAddress(correction)}`;
     if (correctedCells.has(correctedCell)) {
@@ -741,14 +964,29 @@ export function patchOriginalWorkbook(
     }
     const originalXml = textDecoder.decode(entries[sheetPath]);
     removedFormula ||= correctionRemovesFormula(originalXml, groupedCorrections);
-    entries[sheetPath] = textEncoder.encode(patchWorksheetXml(originalXml, groupedCorrections));
+    let patchedXml = patchWorksheetXml(originalXml, groupedCorrections);
+    if (appendedColumn && requestedSheet.localeCompare(
+      appendedSheet,
+      undefined,
+      { sensitivity: 'accent' },
+    ) === 0) {
+      patchedXml = patchAppendedColumnMetadata(patchedXml, appendedColumn);
+      appendedActualSheet = actualSheet;
+    }
+    entries[sheetPath] = textEncoder.encode(patchedXml);
   }
 
   if (removedFormula) removeCalculationChain(entries, workbookPath);
 
-  entries[workbookPath] = textEncoder.encode(
-    markForFullCalculation(textDecoder.decode(entries[workbookPath])),
-  );
+  let workbookXml = markForFullCalculation(textDecoder.decode(entries[workbookPath]));
+  if (appendedColumn && appendedActualSheet) {
+    workbookXml = extendFilterDatabaseDefinedName(
+      workbookXml,
+      appendedActualSheet,
+      appendedColumn.columnIndex,
+    );
+  }
+  entries[workbookPath] = textEncoder.encode(workbookXml);
   if (options.refreshPivotCaches !== false) {
     for (const [entryPath, entryBytes] of Object.entries(entries)) {
       if (/^xl\/pivotCache\/pivotCacheDefinition[^/]*\.xml$/i.test(entryPath)) {

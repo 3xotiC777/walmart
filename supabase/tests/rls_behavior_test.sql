@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(48);
+select extensions.plan(53);
 
 -- Identidades aisladas para probar RLS y RPC con el mismo rol que usa PostgREST.
 insert into auth.users (id, email)
@@ -112,6 +112,14 @@ values
   ('07670000-0000-4000-8000-000000000001', 'c3300000-0000-4000-8000-000000000001', 'b2200000-0000-4000-8000-000000000001', 'e5500000-0000-4000-8000-000000000001', 'f6600000-0000-4000-8000-000000000001', 'alert-a', 'R01', 'validation', 'Descripcion', 2, 'PRODUCTO A', 'Alerta asignada al validador A.', 'pending'),
   ('07670000-0000-4000-8000-000000000002', 'c3300000-0000-4000-8000-000000000001', 'b2200000-0000-4000-8000-000000000001', 'e5500000-0000-4000-8000-000000000002', null, 'alert-b', 'R15', 'validation', 'Descripcion', 2, 'PRODUCTO B', 'Alerta asignada al validador B.', 'pending');
 
+insert into public.daily_productivity (
+  workspace_id, upload_id, user_id, activity_date,
+  tasks_resolved, alerts_resolved, cells_changed, rows_corrected, confirmed_correct
+)
+values
+  ('b2200000-0000-4000-8000-000000000001', 'c3300000-0000-4000-8000-000000000001', 'a1100000-0000-4000-8000-000000000003', current_date, 1, 1, 1, 1, 0),
+  ('b2200000-0000-4000-8000-000000000001', 'c3300000-0000-4000-8000-000000000001', 'a1100000-0000-4000-8000-000000000004', current_date, 0, 0, 0, 0, 1);
+
 insert into storage.objects (bucket_id, name, owner_id, metadata)
 values (
   'pqm-private',
@@ -134,6 +142,26 @@ select extensions.is(
   (select sum(alert_count) from public.get_upload_rule_metrics('c3300000-0000-4000-8000-000000000001')),
   2::numeric,
   'el líder cuenta las alertas de todas las reglas de la jornada'
+);
+select extensions.is(
+  (select count(*) from public.get_upload_team_productivity('c3300000-0000-4000-8000-000000000001')),
+  2::bigint,
+  'el líder recibe una fila de productividad por validador con asignación o actividad'
+);
+select extensions.is(
+  (select sum(assigned_task_count) from public.get_upload_team_productivity('c3300000-0000-4000-8000-000000000001')),
+  2::numeric,
+  'la productividad cuenta tareas asignadas sin inflarlas por alertas'
+);
+select extensions.is(
+  (select sum(assigned_alert_count) from public.get_upload_team_productivity('c3300000-0000-4000-8000-000000000001')),
+  2::numeric,
+  'la productividad conserva también el total de alertas asignadas'
+);
+select extensions.is(
+  (select array_agg(tasks_resolved order by user_id) from public.get_upload_team_productivity('c3300000-0000-4000-8000-000000000001')),
+  array[1::bigint, 0::bigint],
+  'el trabajo realizado se atribuye al actor y permanece separado de su carga actual'
 );
 reset role;
 
@@ -186,6 +214,11 @@ select extensions.is(
   )),
   1::bigint,
   'el total paginado también respeta la asignación del validador'
+);
+select extensions.is(
+  (select count(*) from public.get_upload_team_productivity('c3300000-0000-4000-8000-000000000001')),
+  0::bigint,
+  'un validador no puede consultar la productividad del resto del equipo'
 );
 
 select extensions.throws_ok(

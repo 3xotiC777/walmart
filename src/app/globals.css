@@ -239,6 +239,16 @@ button { cursor: pointer; }
 .study-mode { margin: 0 0 18px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; }.study-mode legend { padding: 0 7px; color: var(--ink); font-size: 13px; font-weight: 800; }.study-mode:disabled { opacity: .72; }.study-mode > p { margin: 0 0 12px; color: var(--muted); font-size: 11px; }.study-mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.study-mode-options label { display: flex; gap: 10px; align-items: flex-start; padding: 13px; cursor: pointer; background: #f8fbff; border: 1px solid #cbd8e6; border-radius: 11px; }.study-mode-options label.selected { background: #edf5ff; border-color: var(--blue); box-shadow: 0 0 0 2px rgb(18 101 214 / 10%); }.study-mode-options input { margin-top: 3px; accent-color: var(--blue); }.study-mode-options span { display: grid; gap: 3px; }.study-mode-options strong { font-size: 12px; }.study-mode-options small { color: var(--muted); font-size: 10px; line-height: 1.45; }
 .team-form { display: grid; grid-template-columns: 1fr 1fr 150px auto; gap: 10px; align-items: end; }.field { display: grid; gap: 6px; }.field span { color: var(--ink-2); font-size: 10px; font-weight: 800; }
 .credential-card { margin-top: 14px; padding: 16px; color: #fff; background: var(--ink); border-radius: 12px; }.credential-card code { display: block; margin-top: 8px; color: var(--yellow); font-size: 19px; font-weight: 850; letter-spacing: .06em; }
+.productivity-table { min-width: 1040px; }
+.productivity-table td { vertical-align: middle; font-variant-numeric: tabular-nums; }
+.productivity-stat strong, .productivity-stat small, .productivity-note { display: block; }
+.productivity-stat strong { color: var(--ink); font-size: 12px; }
+.productivity-stat small, .productivity-note { margin-top: 3px; color: var(--muted); font-size: 9px; }
+.productivity-progress { min-width: 130px; }
+.productivity-progress > span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+.productivity-progress > span strong { font-size: 12px; }
+.productivity-progress > span small { color: var(--muted); font-size: 9px; white-space: nowrap; }
+.productivity-error { margin: 14px 20px 0; }
 
 @media (max-width: 1050px) {
   .auth-layout { grid-template-columns: 1fr 440px; }.story-copy h1 { font-size: 50px; }
