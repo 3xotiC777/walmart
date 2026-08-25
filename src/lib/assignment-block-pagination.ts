@@ -5,12 +5,14 @@ export const ASSIGNMENT_BLOCK_PAGE_SIZE = 500;
 export interface AssignmentBlockRow {
   id: string;
   block_key: string;
+  status: string;
   alert_count: number;
   member_count: number;
   invoice_count: number;
   weight: number | string;
   assigned_to: string | null;
   version: number;
+  assignment_version: number;
 }
 
 interface AssignmentBlockPage {
@@ -60,7 +62,7 @@ export async function fetchAllAssignmentBlocks(
     const { data, error, count } = await supabase
       .from('assignment_blocks')
       .select(
-        'id, block_key, alert_count, member_count, invoice_count, weight, assigned_to, version',
+        'id, block_key, status, alert_count, member_count, invoice_count, weight, assigned_to, version, assignment_version',
         includeCount ? { count: 'exact' } : undefined,
       )
       .eq('upload_id', uploadId)
