@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { validateDataset } from './rules';
+import { compareRuleIds, validateDataset } from './rules';
 import { makeDataset, TEST_HIERARCHY } from './testHelpers';
 
 describe('motor de validación PQM', () => {
+  it('ordena reglas según el catálogo y deja ortografía al final', () => {
+    expect(['R30', 'ORT-01', 'EST-01', 'R29', 'R02'].sort(compareRuleIds)).toEqual([
+      'R02', 'R29', 'R30', 'EST-01', 'ORT-01',
+    ]);
+  });
+
   it('cuenta todo el grupo como afectado y alerta solo el valor diferente de la mayoría', () => {
     const dataset = makeDataset([
       { codiGo_barras: ' 001 ', Descripcion: 'Producto marca' },
@@ -272,6 +278,95 @@ describe('motor de validación PQM', () => {
       affectedRows: 5,
       alertCount: 3,
     });
+  });
+
+  it('aplica R30 a una incompatibilidad de producto respaldada por la misma base', () => {
+    const dataset = makeDataset([
+      { Producto_Wm: 'JUGOS', Marca_Wm: 'FONTANA', Descripcion: 'JUGO NARANJA FONTANA 1LT', Gramaje: 1, unidad_de_Medida: 'LITROS' },
+      { Producto_Wm: 'JUGOS', Marca_Wm: 'FONTANA', Descripcion: 'JUGO MANZANA FONTANA 1LT', Gramaje: 1, unidad_de_Medida: 'LITROS' },
+      { Producto_Wm: 'JUGOS', Marca_Wm: 'FONTANA', Descripcion: 'JUGO UVA FONTANA 1LT', Gramaje: 1, unidad_de_Medida: 'LITROS' },
+      { Producto_Wm: 'JUGOS', Marca_Wm: 'FONTANA', Descripcion: 'JUGO PERA FONTANA 1LT', Gramaje: 1, unidad_de_Medida: 'LITROS' },
+      { Producto_Wm: 'JUGOS', Marca_Wm: 'FONTANA', Descripcion: 'JUGO MANGO FONTANA 1LT', Gramaje: 1, unidad_de_Medida: 'LITROS' },
+      { Producto_Wm: 'JUGOS', Marca_Wm: 'FONTANA', Descripcion: 'JUGO PIÑA FONTANA 1LT', Gramaje: 1, unidad_de_Medida: 'LITROS' },
+      { Producto_Wm: 'REFRIGERANTES', Marca_Wm: 'FONTANA', Descripcion: 'JUGO NARANJA FONTANA 1LT', Gramaje: 1, unidad_de_Medida: 'LITROS' },
+    ]);
+
+    const result = validateDataset(dataset, TEST_HIERARCHY);
+    const alerts = result.alerts.filter((alert) => alert.ruleId === 'R30');
+
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({
+      sourceRow: 8,
+      field: 'Descripcion',
+      observed: 'JUGO NARANJA FONTANA 1LT',
+    });
+    expect(alerts[0].detail).toContain('Posible inconsistencia');
+    expect(result.ruleSummaries.find((rule) => rule.id === 'R30')).toMatchObject({
+      affectedRows: 1,
+      alertCount: 1,
+    });
+  });
+
+  it('genera un solo evento R30 aunque falle el orden y falte la medida', () => {
+    const dataset = makeDataset([{
+      Producto_Wm: 'JUGOS',
+      Marca_Wm: 'FONTANA',
+      Descripcion: 'FONTANA JUGO NARANJA',
+      Gramaje: 1,
+      unidad_de_Medida: 'LITROS',
+    }]);
+
+    const alerts = validateDataset(dataset, TEST_HIERARCHY).alerts.filter((alert) => alert.ruleId === 'R30');
+
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].detail).toContain('producto aparece después de la marca');
+    expect(alerts[0].detail).toContain('medida compatible');
+  });
+
+  it('R30 compara la magnitud convertida del gramaje de extremo a extremo', () => {
+    const dataset = makeDataset([
+      {
+        codiGo_barras: 'VOLUMEN-OK',
+        Producto_Wm: 'JUGOS',
+        Marca_Wm: 'FONTANA',
+        Descripcion: 'JUGO NARANJA FONTANA 1LT',
+        Gramaje: 1,
+        unidad_de_Medida: 'LITROS',
+      },
+      {
+        codiGo_barras: 'VOLUMEN-MAL',
+        Producto_Wm: 'JUGOS',
+        Marca_Wm: 'FONTANA',
+        Descripcion: 'JUGO NARANJA FONTANA 2LT',
+        Gramaje: 1,
+        unidad_de_Medida: 'LITROS',
+      },
+    ]);
+
+    const alerts = validateDataset(dataset, TEST_HIERARCHY).alerts.filter((alert) => alert.ruleId === 'R30');
+
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({
+      sourceRow: 3,
+      field: 'Descripcion',
+      observed: 'JUGO NARANJA FONTANA 2LT',
+    });
+    expect(alerts[0].detail).toContain('no coincide con Gramaje 1 LITROS');
+  });
+
+  it('exige la marca completa y deja en R15 el caso exclusivamente de marca ausente', () => {
+    const dataset = makeDataset([{
+      Producto_Wm: 'JUGOS',
+      Marca_Wm: 'FONTANA',
+      Descripcion: 'JUGO NARANJA FONTANAX 1LT',
+      Gramaje: 1,
+      unidad_de_Medida: 'LITROS',
+    }]);
+
+    const result = validateDataset(dataset, TEST_HIERARCHY);
+
+    expect(result.alerts.filter((alert) => alert.ruleId === 'R15')).toHaveLength(1);
+    expect(result.alerts.filter((alert) => alert.ruleId === 'R30')).toHaveLength(0);
   });
 
   it('aplica la jerarquía exacta y mantiene la regla 21 como visual', () => {

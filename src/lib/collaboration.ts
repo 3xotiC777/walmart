@@ -30,6 +30,7 @@ export interface CollaborationEvidence {
   summary: string;
   groupSize: number;
   sourceRows: number[];
+  inputs?: Record<string, CollaborationValue>;
   statistics?: {
     groupAverage: number;
     priceThreshold: number;
@@ -636,6 +637,30 @@ function buildSuggestion(
         summary: `Se encontró una única descripción de referencia: "${reference}".`,
         groupSize: descriptor.sourceRows.length,
         sourceRows: descriptor.sourceRows,
+      },
+    };
+  }
+
+  if (alert.source.ruleId === 'R30') {
+    const record = descriptor.records.find((item) => item.excelRow === alert.source.sourceRow);
+    return {
+      targetField: 'Descripcion',
+      targetColumnIndex: targetColumnIndex(dataset, 'Descripcion'),
+      value: null,
+      method: 'manual-review',
+      confidence: 'none',
+      alternatives: [],
+      autoApplicable: false,
+      evidence: {
+        summary: `${alert.source.detail} ${alert.source.expected}`,
+        groupSize: 1,
+        sourceRows: [alert.source.sourceRow],
+        inputs: {
+          Producto_Wm: collaborationValue(record?.fields.Producto_Wm),
+          Marca_Wm: collaborationValue(record?.fields.Marca_Wm),
+          Gramaje: collaborationValue(record?.fields.Gramaje),
+          unidad_de_Medida: collaborationValue(record?.fields.unidad_de_Medida),
+        },
       },
     };
   }

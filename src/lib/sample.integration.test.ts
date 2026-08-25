@@ -30,5 +30,8 @@ describe('archivo PQM de referencia', () => {
       affectedRows: 35,
       alertCount: 1,
     });
+    const r30 = result.ruleSummaries.find((rule) => rule.id === 'R30');
+    expect(r30).toBeDefined();
+    expect(r30?.affectedRows).toBe(r30?.alertCount);
   }, 30_000);
 });

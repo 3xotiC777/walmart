@@ -56,6 +56,14 @@ describe('plan de ingesta colaborativa', () => {
 
     expect(first).toMatchObject({ storedRowCount: 3, taskCount: 1, alertCount: 2 });
     expect(items(first, 'rows').map((row) => row.external_key)).toEqual(['row-2', 'row-3', 'row-4']);
+    expect(items(first, 'rows')).toContainEqual(expect.objectContaining({
+      external_key: 'row-4',
+      field_values: expect.objectContaining({
+        cantidad_comprada: 2,
+        Precio_Unidad: 10,
+        Precio_Total_Preciador: 10,
+      }),
+    }));
     expect(items(first, 'tasks')).toEqual([
       expect.objectContaining({
         external_key: 'task-4',
@@ -139,5 +147,59 @@ describe('plan de ingesta colaborativa', () => {
     });
     const statistics = (alert?.suggestion_evidence as { statistics?: { priceThreshold?: number } })?.statistics;
     expect(statistics?.priceThreshold).toBeCloseTo(32.2);
+  });
+
+  it('persiste R30 como alerta manual editable sobre Descripcion', async () => {
+    const dataset = makeDataset([{
+      Producto_Wm: 'PRODUCTO A',
+      Marca_Wm: 'MARCA',
+      Descripcion: 'MARCA PRODUCTO A 1LT',
+      Gramaje: 1,
+      unidad_de_Medida: 'LITROS',
+    }]);
+    const result = onlyRules(validateDataset(dataset, TEST_HIERARCHY), ['R30']);
+    const plan = await buildIngestionPlan(
+      dataset,
+      createCollaborationManifest(dataset, result),
+      { sourceFile: 'facturas.xlsx', urlsByRef: {}, totalImages: 0 },
+    );
+
+    expect(plan).toMatchObject({ storedRowCount: 1, taskCount: 1, alertCount: 1 });
+    expect(items(plan, 'groups')).toEqual([
+      expect.objectContaining({
+        rule_code: 'R30',
+        affected_field: 'Descripcion',
+        affected_row_count: 1,
+        alert_count: 1,
+      }),
+    ]);
+    expect(items(plan, 'group_members')).toEqual([
+      expect.objectContaining({ rule_code: 'R30', excel_row: 2, is_alert: true, is_related_context: false }),
+    ]);
+    expect(items(plan, 'alerts')).toEqual([
+      expect.objectContaining({
+        event_key: 'alert-R30-2',
+        rule_code: 'R30',
+        category: 'validation',
+        affected_field: 'Descripcion',
+        source_column_index: dataset.headers.indexOf('Descripcion'),
+        original_value: 'MARCA PRODUCTO A 1LT',
+        suggested_column_name: 'Descripcion',
+        suggested_column_index: dataset.headers.indexOf('Descripcion'),
+        suggested_value: null,
+        suggestion_method: 'manual-review',
+        suggestion_confidence: 'none',
+        suggestion_evidence: expect.objectContaining({
+          inputs: {
+            Producto_Wm: 'PRODUCTO A',
+            Marca_Wm: 'MARCA',
+            Gramaje: 1,
+            unidad_de_Medida: 'LITROS',
+          },
+        }),
+        can_auto_apply: false,
+        evidence_fingerprint_hex: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+    ]);
   });
 });

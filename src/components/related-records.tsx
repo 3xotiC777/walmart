@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { relatedContextItems } from '@/lib/related-context';
 import type { RelatedRecordView } from '@/lib/related-pagination';
 
 interface RelatedResponse {
@@ -167,13 +168,25 @@ export function RelatedRecords({
           {items.map((item) => {
             const otherBlock = Boolean(item.block_id && item.block_id !== blockId);
             const sameAssignee = item.owner === blockAssignedTo;
+            const contextItems = relatedContextItems(item.field_values ?? {});
             return (
             <tr key={item.id}>
               <td>{item.excel_row}</td>
               <td className="mono">{item.row_id || '—'}</td>
               <td className="mono">{item.barcode || '—'}</td>
               <td>{item.description || '—'}</td>
-              <td>{Object.entries(item.field_values ?? {}).slice(0, 5).map(([field, value]) => <div key={field}><small>{field}: </small>{String(value ?? '—')}</div>)}</td>
+              <td>
+                <div className="related-context-list">
+                  {contextItems.length > 0
+                    ? contextItems.map((context) => (
+                      <div className={`related-context-item ${context.tone}`} key={context.field}>
+                        <small>{context.label}</small>
+                        <strong>{context.value}</strong>
+                      </div>
+                    ))
+                    : <span aria-label="Sin valores de contexto">—</span>}
+                </div>
+              </td>
               <td>
                 <div className="related-actions">
                   {item.task_id

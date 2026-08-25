@@ -39,7 +39,7 @@ function dataset(description = 'PRODUCTO'): SourceDataset {
     codiGo_barras: '001234',
     codiGo_estandar: '001234',
     Descripcion: description,
-    Gramaje: 1,
+    Gramaje: 'NO ESPECIFICA',
     unidad_de_Medida: 'UNIDADES',
     cantidad_comprada: 1,
     Precio_Unidad: 10,
@@ -148,6 +148,104 @@ describe('preflight de exportación colaborativa', () => {
     });
     expect(source.records[0].fields.Descripcion).toBe('PRODUCTO');
     expect(result.overlayDataset.records[0].fields.Descripcion).toBe('OTRO PRODUCTO');
+  });
+
+  it('invalida una confirmación R30 si cambia un insumo aunque la descripción permanezca igual', async () => {
+    const source = dataset('ACME PRODUCTO 1LT');
+    source.records[0].fields.Gramaje = 1;
+    source.records[0].fields.unidad_de_Medida = 'LITROS';
+    source.records[0].values[headers.indexOf('Gramaje')] = 1;
+    source.records[0].values[headers.indexOf('unidad_de_Medida')] = 'LITROS';
+    const validation = validateDataset(source, hierarchy);
+    const manifest = createCollaborationManifest(source, validation);
+    const alert = manifest.tasks.flatMap((task) => task.alerts).find((item) => item.ruleId === 'R30');
+    if (!alert) throw new Error('El fixture debe producir R30.');
+    const fingerprint = await collaborationAlertEvidenceFingerprint(source, alert);
+    const storedAlerts = [{
+      id: 'db-alert-r30',
+      event_key: alert.id,
+      rule_code: 'R30',
+      evidence_fingerprint: `\\x${fingerprint}`,
+    }];
+    const storedDecisions = [{
+      alert_id: 'db-alert-r30',
+      decision: 'confirmed_correct',
+      evidence_fingerprint: `\\x${fingerprint}`,
+      superseded_at: null,
+    }];
+
+    const unchanged = await revalidateExportOverlay({
+      dataset: source,
+      resolutions: [],
+      alerts: storedAlerts,
+      decisions: storedDecisions,
+      hierarchy,
+      hasBarcode: true,
+    });
+    expect(unchanged.safeForFinal).toBe(true);
+    expect(unchanged.acceptedConfirmedCorrect).toBe(1);
+
+    const result = await revalidateExportOverlay({
+      dataset: source,
+      resolutions: [{
+        column_index: headers.indexOf('Gramaje'),
+        field_name: 'Gramaje',
+        resolved_value: '2',
+        source_rows: { excel_row: 2 },
+      }],
+      alerts: storedAlerts,
+      decisions: storedDecisions,
+      hierarchy,
+      hasBarcode: true,
+    });
+
+    expect(result.safeForFinal).toBe(false);
+    expect(result.invalidConfirmedCorrect).toEqual([
+      expect.objectContaining({
+        eventKey: 'alert-R30-2',
+        ruleId: 'R30',
+        sourceRow: 2,
+        reason: 'confirmed_correct_evidence_changed',
+      }),
+    ]);
+    expect(source.records[0].fields.Gramaje).toBe(1);
+    expect(result.overlayDataset.records[0].fields.Gramaje).toBe(2);
+  });
+
+  it('considera segura una edición manual que corrige el orden detectado por R30', async () => {
+    const source = dataset('ACME PRODUCTO 1LT');
+    source.records[0].fields.Gramaje = 1;
+    source.records[0].fields.unidad_de_Medida = 'LITROS';
+    source.records[0].values[headers.indexOf('Gramaje')] = 1;
+    source.records[0].values[headers.indexOf('unidad_de_Medida')] = 'LITROS';
+    const validation = validateDataset(source, hierarchy);
+    const manifest = createCollaborationManifest(source, validation);
+    const alert = manifest.tasks.flatMap((task) => task.alerts).find((item) => item.ruleId === 'R30');
+    if (!alert) throw new Error('El fixture debe producir R30.');
+
+    const result = await revalidateExportOverlay({
+      dataset: source,
+      resolutions: [resolution('PRODUCTO ACME 1LT')],
+      alerts: [{
+        id: 'db-alert-r30',
+        event_key: alert.id,
+        rule_code: 'R30',
+        evidence_fingerprint: null,
+      }],
+      decisions: [{
+        alert_id: 'db-alert-r30',
+        decision: 'manual_edit',
+        evidence_fingerprint: null,
+        superseded_at: null,
+      }],
+      hierarchy,
+      hasBarcode: true,
+    });
+
+    expect(result.safeForFinal).toBe(true);
+    expect(result.validationAlertCount).toBe(0);
+    expect(result.remainingAlerts).toEqual([]);
+    expect(result.overlayDataset.records[0].fields.Descripcion).toBe('PRODUCTO ACME 1LT');
   });
 
   it('considera segura una corrección que elimina la alerta original', async () => {

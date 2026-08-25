@@ -186,6 +186,58 @@ describe('manifiesto colaborativo', () => {
     });
   });
 
+  it('mantiene R30 en un grupo unitario con edición manual y evidencia completa', () => {
+    const dataset = makeDataset([{
+      Producto_Wm: 'PRODUCTO A',
+      Marca_Wm: 'MARCA',
+      Descripcion: 'MARCA PRODUCTO A 1LT',
+      Gramaje: 1,
+      unidad_de_Medida: 'LITROS',
+    }]);
+    const result = onlyRules(validateDataset(dataset, TEST_HIERARCHY), ['R30']);
+
+    const manifest = createCollaborationManifest(dataset, result);
+    const group = manifest.conflictGroups[0];
+    const alert = manifest.tasks[0]?.alerts[0];
+
+    expect(result.alerts).toHaveLength(1);
+    expect(group).toMatchObject({
+      ruleId: 'R30',
+      keyFields: ['__sourceRow'],
+      targetField: 'Descripcion',
+      alertSourceRows: [2],
+    });
+    expect(group.members.map((member) => member.sourceRow)).toEqual([2]);
+    expect(alert).toMatchObject({
+      id: 'alert-R30-2',
+      ruleId: 'R30',
+      conflictGroupId: group.id,
+      suggestion: {
+        targetField: 'Descripcion',
+        targetColumnIndex: dataset.headers.indexOf('Descripcion'),
+        value: null,
+        method: 'manual-review',
+        confidence: 'none',
+        alternatives: [],
+        autoApplicable: false,
+        evidence: {
+          groupSize: 1,
+          sourceRows: [2],
+          inputs: {
+            Producto_Wm: 'PRODUCTO A',
+            Marca_Wm: 'MARCA',
+            Gramaje: 1,
+            unidad_de_Medida: 'LITROS',
+          },
+        },
+      },
+    });
+    expect(manifest.blocks).toEqual([
+      expect.objectContaining({ sourceRows: [2], relatedSourceRows: [2], taskCount: 1, alertCount: 1, weight: 1 }),
+    ]);
+    expect(manifest.metrics).toMatchObject({ reviewTasks: 1, alertEvents: 1, pendingTasks: 1 });
+  });
+
   it('une ortografía y reglas automáticas de la misma fila en una sola tarea', () => {
     const dataset = makeDataset([
       { codiGo_barras: '001', Descripcion: 'PRODUCTO MARCA' },

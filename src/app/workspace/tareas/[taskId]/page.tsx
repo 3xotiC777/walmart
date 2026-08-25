@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { TaskReview, type AlertView } from '@/components/task-review';
 import { RelatedEditor } from '@/components/related-editor';
 import { requireViewer } from '@/lib/auth';
+import { compareRuleIds } from '@/lib/rules';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 
@@ -15,7 +16,8 @@ export default async function TaskPage({ params }: { params: Promise<{ taskId: s
   if (!task) notFound();
   const source = Array.isArray(task.source_rows) ? task.source_rows[0] : task.source_rows;
   const block = Array.isArray(task.assignment_blocks) ? task.assignment_blocks[0] : task.assignment_blocks;
-  const alerts = (task.validation_alerts ?? []) as AlertView[];
+  const alerts = [...((task.validation_alerts ?? []) as AlertView[])]
+    .sort((left, right) => compareRuleIds(left.rule_code, right.rule_code));
   const { data: invoiceRows } = source?.id_dn_w ? await supabase.from('invoice_links').select('external_url').eq('upload_id', task.upload_id).eq('id_dn_w', source.id_dn_w).not('external_url', 'is', null).range(0, 19) : { data: [] };
   const invoices = [...new Set((invoiceRows ?? []).map((item) => item.external_url).filter((url): url is string => Boolean(url)))];
   const { data: upload } = await supabase

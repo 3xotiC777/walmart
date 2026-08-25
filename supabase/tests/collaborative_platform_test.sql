@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(54);
+select extensions.plan(56);
 
 select extensions.ok(
   (select count(*) = 16
@@ -230,6 +230,22 @@ select extensions.ok(
      'public.browse_review_tasks(uuid,public.review_status,text,text,text,integer,integer)'::regprocedure::oid
    ])),
   'las RPC de bandeja son security invoker y conservan RLS'
+);
+
+select extensions.ok(
+  (select pg_get_constraintdef(oid) like '%|30)%'
+   from pg_constraint
+   where conrelid = 'public.conflict_groups'::regclass
+     and conname = 'conflict_groups_rule_code_check'),
+  'los grupos de conflicto admiten R30'
+);
+select extensions.ok(
+  (select pg_get_constraintdef(oid) like '%|30)%'
+          and pg_get_constraintdef(oid) not like '%|31)%'
+   from pg_constraint
+   where conrelid = 'public.validation_alerts'::regclass
+     and conname = 'validation_alerts_rule_code_check'),
+  'las alertas admiten R30 sin abrir R31'
 );
 
 select * from extensions.finish();
