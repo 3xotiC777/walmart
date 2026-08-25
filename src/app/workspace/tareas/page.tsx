@@ -170,7 +170,7 @@ export default async function TasksPage({
                 <td className="row-main"><strong>{task.description || 'Sin descripción'}</strong><small>Id_Dn W: {task.id_dn_w || '—'}</small></td>
                 <td>{taskAlerts(task.validation_alerts).map((alert) => <span className="rule-badge" key={alert.id}>{alert.rule_code}</span>)}</td>
                 <td><span className={`status ${task.status === 'resolved' ? 'resolved' : 'pending'}`}>{STATUS_LABELS[task.status]}</span></td>
-                <td><Link className="review-link" href={`/workspace/tareas/${task.id}`}>Revisar →</Link></td>
+                <td><Link className="review-link" href={`/workspace/tareas/${task.id}`} prefetch={false}>Revisar →</Link></td>
               </tr>)}
               {rows.length === 0 && <tr><td colSpan={6}>No hay tareas que coincidan con los filtros.</td></tr>}
             </tbody>
@@ -181,10 +181,10 @@ export default async function TasksPage({
         <strong>Página {page} de {totalPages}</strong>
         <nav aria-label="Paginación de tareas">
           {page > 1
-            ? <Link className="button button-secondary" href={previousHref}>← Anterior</Link>
+            ? <Link className="button button-secondary" href={previousHref} prefetch={false}>← Anterior</Link>
             : <span aria-disabled="true" className="button button-secondary is-disabled">← Anterior</span>}
           {page < totalPages
-            ? <Link className="button button-secondary" href={nextHref}>Siguiente →</Link>
+            ? <Link className="button button-secondary" href={nextHref} prefetch={false}>Siguiente →</Link>
             : <span aria-disabled="true" className="button button-secondary is-disabled">Siguiente →</span>}
         </nav>
       </footer>
