@@ -6,6 +6,7 @@ import { buildOutputWorkbook } from '../lib/exportWorkbook';
 import { generateOrthographyAlerts } from '../lib/orthography';
 import { parseInvoiceWorkbook, parseWorkbook } from '../lib/parser';
 import { validateDataset } from '../lib/rules';
+import { resolveHasBarcode } from '../lib/study-mode';
 import { ORTHOGRAPHY_RULE } from '../lib/types';
 import type { AlertRecord, HierarchyCatalog, OrthographyAlert, WorkerMessage, WorkerRequest, WorkerResult } from '../lib/types';
 
@@ -42,10 +43,11 @@ worker.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
 
     progress('Leyendo la base general…', 28);
     const dataset = parseWorkbook(event.data.sourceBuffer, event.data.sourceFileName);
-    dataset.hasBarcode = event.data.hasBarcode;
+    const effectiveHasBarcode = resolveHasBarcode(event.data.hasBarcode, dataset.records);
+    dataset.hasBarcode = effectiveHasBarcode;
 
     progress('Cruzando facturas y aplicando las reglas…', 52);
-    const validation = validateDataset(dataset, hierarchy, invoices, { hasBarcode: event.data.hasBarcode });
+    const validation = validateDataset(dataset, hierarchy, invoices, { hasBarcode: effectiveHasBarcode });
 
     progress('Revisando ortografía y espacios…', 72);
     const orthographyAlerts = generateOrthographyAlerts(dataset);

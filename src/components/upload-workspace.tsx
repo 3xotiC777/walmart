@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckIcon, UploadCloudIcon } from './icons';
 import { buildIngestionPlan } from '@/lib/ingestion';
-import { resumableUpload, sha256File } from '@/lib/storage-upload';
+import { FileSnapshotError, resumableUpload, snapshotUploadFile, type UploadFileSnapshot } from '@/lib/storage-upload';
 import type { WorkerMessage, WorkerRequest, WorkerResult } from '@/lib/types';
 
 type Phase = 'select' | 'validating' | 'uploading' | 'saving' | 'done' | 'error';
@@ -14,22 +14,19 @@ function FileDrop({ title, description, file, disabled, onChange }: { title: str
   const input = useRef<HTMLInputElement>(null);
   function select(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0] ?? null;
-    event.target.value = '';
     onChange(selected);
   }
   return (
     <div aria-disabled={disabled} aria-label={title} className={`file-drop ${file ? 'selected' : ''}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (!disabled) onChange(event.dataTransfer.files[0] ?? null); }} role="group">
       {file ? <CheckIcon /> : <UploadCloudIcon />}
       <strong>{title}</strong><p>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : description}</p>
-      <button className="button button-secondary" disabled={disabled} onClick={(event) => { event.preventDefault(); input.current?.click(); }} type="button">{file ? 'Cambiar archivo' : 'Seleccionar .xlsx'}</button>
+      <button className="button button-secondary" disabled={disabled} onClick={(event) => { event.preventDefault(); if (input.current) { input.current.value = ''; input.current.click(); } }} type="button">{file ? 'Cambiar archivo' : 'Seleccionar .xlsx'}</button>
       <input aria-label={`Archivo para ${title}`} disabled={disabled} ref={input} tabIndex={-1} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={select} />
     </div>
   );
 }
 
-async function analyze(panel: File, invoices: File, hasBarcode: boolean, onProgress: (message: string, percent: number) => void, signal: AbortSignal): Promise<WorkerResult> {
-  signal.throwIfAborted();
-  const [sourceBuffer, invoiceBuffer] = await Promise.all([panel.arrayBuffer(), invoices.arrayBuffer()]);
+async function analyze(panel: UploadFileSnapshot, invoices: UploadFileSnapshot, hasBarcode: boolean, onProgress: (message: string, percent: number) => void, signal: AbortSignal): Promise<WorkerResult> {
   signal.throwIfAborted();
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../workers/validator.worker.ts', import.meta.url), { type: 'module' });
@@ -46,28 +43,43 @@ async function analyze(panel: File, invoices: File, hasBarcode: boolean, onProgr
     };
     worker.onerror = () => { worker.terminate(); cleanup(); reject(new Error('El navegador no pudo completar el análisis.')); };
     const request: WorkerRequest = {
-      sourceBuffer,
-      sourceFileName: panel.name,
-      invoiceBuffer,
-      invoiceFileName: invoices.name,
+      sourceBuffer: panel.buffer,
+      sourceFileName: panel.file.name,
+      invoiceBuffer: invoices.buffer,
+      invoiceFileName: invoices.file.name,
       hasBarcode,
     };
-    worker.postMessage(request, [sourceBuffer, invoiceBuffer]);
+    worker.postMessage(request, [panel.buffer, invoices.buffer]);
   });
+}
+
+class ApiRequestError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
 }
 
 async function postJson(url: string, body: unknown, attempts = 3, signal?: AbortSignal) {
   let lastError = new Error('No fue posible guardar el avance.');
+  let lastRetryable = false;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     signal?.throwIfAborted();
-    const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
-    const result = await response.json().catch(() => ({}));
-    if (response.ok) return result;
-    lastError = new Error(result.message ?? lastError.message);
-    if (response.status < 500 && response.status !== 429) break;
-    await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
+    try {
+      const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok) return result;
+      lastError = new Error(result.message ?? lastError.message);
+      lastRetryable = Boolean(result.retryable) || response.status >= 500 || response.status === 429;
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
+      lastError = new Error('Se interrumpió la conexión. Conservamos el avance para reanudarlo automáticamente.');
+      lastRetryable = true;
+    }
+    if (!lastRetryable) break;
+    if (attempt + 1 < attempts) await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
   }
-  throw lastError;
+  throw new ApiRequestError(lastError.message, lastRetryable);
 }
 
 export function UploadWorkspace() {
@@ -80,6 +92,7 @@ export function UploadWorkspace() {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [modeNotice, setModeNotice] = useState('');
   const [metrics, setMetrics] = useState<WorkerResult['collaboration']['metrics'] | null>(null);
   const busy = ['validating', 'uploading', 'saving'].includes(phase);
 
@@ -96,7 +109,7 @@ export function UploadWorkspace() {
   useEffect(() => () => operation.current?.abort(), []);
 
   function validateFile(file: File | null, setFile: (value: File | null) => void) {
-    setError('');
+    setError(''); setModeNotice('');
     if (!file) { setFile(null); return; }
     if (!file.name.toLowerCase().endsWith('.xlsx')) { setError('Selecciona únicamente archivos .xlsx.'); return; }
     if (file.size > MAX_SIZE) { setError('El archivo supera el máximo de 150 MB.'); return; }
@@ -112,26 +125,36 @@ export function UploadWorkspace() {
     let uploadId: string | null = null;
     try {
       setError(''); setPhase('validating'); setProgress(2); setMessage('Validando hojas, columnas y reglas…');
-      const result = await analyze(panel, invoices, hasBarcode, (next, value) => { setMessage(next); setProgress(value); }, signal);
+      const [panelSnapshot, invoiceSnapshot] = await Promise.all([
+        snapshotUploadFile(panel, 'panel maestro PQM'),
+        snapshotUploadFile(invoices, 'referencias de facturas'),
+      ]);
       signal.throwIfAborted();
+      const result = await analyze(panelSnapshot, invoiceSnapshot, hasBarcode, (next, value) => { setMessage(next); setProgress(value); }, signal);
+      signal.throwIfAborted();
+      const effectiveHasBarcode = result.dataset.hasBarcode ?? hasBarcode;
+      if (effectiveHasBarcode !== hasBarcode) {
+        setHasBarcode(effectiveHasBarcode);
+        setModeNotice('No se encontraron valores en codiGo_barras. La jornada se ajustó automáticamente a “No trae código”.');
+      }
       setMetrics(result.collaboration.metrics);
       setMessage('Verificando que los archivos sean únicos…'); setProgress(30);
-      const [panelHash, invoiceHash] = await Promise.all([sha256File(panel), sha256File(invoices)]);
       signal.throwIfAborted();
       const created = await postJson('/api/uploads', {
         panelName: panel.name, invoiceName: invoices.name, displayName: panel.name,
-        panelHash, invoiceHash, panelSize: panel.size, invoiceSize: invoices.size,
+        panelHash: panelSnapshot.sha256, invoiceHash: invoiceSnapshot.sha256,
+        panelSize: panelSnapshot.file.size, invoiceSize: invoiceSnapshot.file.size,
         headers: result.dataset.headers,
-        hasBarcode,
+        hasBarcode: effectiveHasBarcode,
       }, 3, signal);
       uploadId = created.uploadId;
 
       setPhase('uploading');
       setMessage(created.resumed ? 'Retomando la carga privada del panel…' : 'Subiendo el panel de forma privada…');
       setProgress(34);
-      await resumableUpload(panel, created.panelPath, (value) => setProgress(34 + value * .16), signal);
+      await resumableUpload(panelSnapshot.file, created.panelPath, (value) => setProgress(34 + value * .16), signal);
       setMessage('Subiendo las referencias de facturas…');
-      await resumableUpload(invoices, created.invoicePath, (value) => setProgress(50 + value * .08), signal);
+      await resumableUpload(invoiceSnapshot.file, created.invoicePath, (value) => setProgress(50 + value * .08), signal);
 
       setPhase('saving'); setMessage('Preparando tareas, relacionados y sugerencias…'); setProgress(59);
       const plan = await buildIngestionPlan(result.dataset, result.collaboration, result.invoiceCatalog);
@@ -155,8 +178,13 @@ export function UploadWorkspace() {
       router.push(`/workspace/reparto/${uploadId}`); router.refresh();
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === 'AbortError') return;
+      if (cause instanceof FileSnapshotError) {
+        if (cause.label === 'panel maestro PQM') setPanel(null);
+        if (cause.label === 'referencias de facturas') setInvoices(null);
+      }
       const failure = cause instanceof Error ? cause.message : 'La carga no pudo completarse.';
-      if (uploadId) void postJson(`/api/uploads/${uploadId}/fail`, { message: failure }, 1).catch(() => undefined);
+      const retryable = cause instanceof ApiRequestError && cause.retryable;
+      if (uploadId && !retryable) void postJson(`/api/uploads/${uploadId}/fail`, { message: failure }, 1).catch(() => undefined);
       setError(failure); setPhase('error'); setMessage('');
     } finally {
       if (operation.current === controller) operation.current = null;
@@ -189,6 +217,7 @@ export function UploadWorkspace() {
           <FileDrop title="Referencias de facturas" description="Hoja Data con RefID_STG y URL_DN." file={invoices} disabled={busy} onChange={(file) => validateFile(file, setInvoices)} />
         </div>
         {(busy || phase === 'done') && <div className="upload-progress" aria-live="polite"><header><strong>{message}</strong><span>{Math.round(progress)}%</span></header><div className="progress-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><span style={{ width: `${progress}%` }} /></div>{metrics && <p>{metrics.reviewTasks.toLocaleString('es-CO')} tareas · {metrics.alertEvents.toLocaleString('es-CO')} eventos · {metrics.orthographyAlerts.toLocaleString('es-CO')} de ortografía</p>}</div>}
+        {modeNotice && <p className="form-notice" role="status">{modeNotice}</p>}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="decision-actions"><button className="button button-primary" disabled={!panel || !invoices || hasBarcode === null || busy} onClick={() => void start()} type="button">{busy ? 'Preparando jornada…' : phase === 'error' ? 'Intentar nuevamente' : 'Validar y crear jornada'} <UploadCloudIcon /></button></div>
       </div></section>

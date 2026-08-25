@@ -10,9 +10,42 @@ export function buildUploadFingerprint(file: Pick<File, 'name' | 'type' | 'size'
   return ['pqm-tus-v1', objectName, file.name, file.type, file.size, file.lastModified, endpoint].join('|');
 }
 
-export async function sha256File(file: File): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+export async function sha256Buffer(buffer: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', buffer);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export interface UploadFileSnapshot {
+  buffer: ArrayBuffer;
+  file: File;
+  sha256: string;
+}
+
+export class FileSnapshotError extends Error {
+  constructor(message: string, readonly label: string) {
+    super(message);
+    this.name = 'FileSnapshotError';
+  }
+}
+
+export async function snapshotUploadFile(source: File, label: string): Promise<UploadFileSnapshot> {
+  try {
+    // Read the OS-backed handle exactly once. The in-memory File remains stable
+    // while the worker analyses a transferred copy and TUS uploads it later.
+    const buffer = await source.arrayBuffer();
+    const sha256 = await sha256Buffer(buffer);
+    const file = new File([buffer], source.name, {
+      type: source.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      lastModified: source.lastModified,
+    });
+    return { buffer, file, sha256 };
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
+    const inaccessible = cause instanceof DOMException && cause.name === 'NotReadableError';
+    throw new FileSnapshotError(inaccessible
+      ? `El navegador perdió acceso al archivo: ${label}. Vuelve a seleccionarlo y espera a que termine de descargarse o sincronizarse antes de intentar otra vez.`
+      : `No fue posible leer el archivo: ${label}. Vuelve a seleccionarlo e intenta nuevamente.`, label);
+  }
 }
 
 function storageHostname(projectUrl: string): string {
