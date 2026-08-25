@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(56);
+select extensions.plan(60);
 
 select extensions.ok(
   (select count(*) = 16
@@ -207,6 +207,10 @@ select extensions.ok(
   'existe la RPC paginada y ordenable de tareas'
 );
 select extensions.ok(
+  to_regprocedure('public.get_upload_rule_metrics(uuid)') is not null,
+  'existe la RPC de alertas agrupadas por regla'
+);
+select extensions.ok(
   not has_function_privilege('anon', 'public.get_upload_assignment_metrics(uuid)', 'execute'),
   'anon no puede consultar métricas de asignación'
 );
@@ -223,13 +227,32 @@ select extensions.ok(
   'authenticated puede navegar su bandeja bajo RLS'
 );
 select extensions.ok(
+  not has_function_privilege('anon', 'public.get_upload_rule_metrics(uuid)', 'execute'),
+  'anon no puede consultar el desglose por regla'
+);
+select extensions.ok(
+  has_function_privilege('authenticated', 'public.get_upload_rule_metrics(uuid)', 'execute'),
+  'authenticated puede consultar el desglose por regla protegido'
+);
+select extensions.ok(
   (select bool_and(not procedure.prosecdef)
    from pg_proc procedure
    where procedure.oid = any (array[
      'public.get_upload_assignment_metrics(uuid)'::regprocedure::oid,
-     'public.browse_review_tasks(uuid,public.review_status,text,text,text,integer,integer)'::regprocedure::oid
+     'public.browse_review_tasks(uuid,public.review_status,text,text,text,integer,integer)'::regprocedure::oid,
+     'public.get_upload_rule_metrics(uuid)'::regprocedure::oid
    ])),
-  'las RPC de bandeja son security invoker y conservan RLS'
+  'las RPC públicas de bandeja son security invoker'
+);
+select extensions.ok(
+  (select bool_and(procedure.prosecdef)
+   from pg_proc procedure
+   where procedure.oid = any (array[
+     'private.get_upload_assignment_metrics_scoped(uuid)'::regprocedure::oid,
+     'private.browse_review_tasks_scoped(uuid,public.review_status,text,text,text,integer,integer)'::regprocedure::oid,
+     'private.get_upload_rule_metrics_scoped(uuid)'::regprocedure::oid
+   ])),
+  'los helpers privados autorizan el alcance como security definer'
 );
 
 select extensions.ok(
