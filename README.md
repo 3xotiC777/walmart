@@ -1,8 +1,10 @@
 # Plataforma colaborativa PQM Walmart
 
-Aplicación interna para detectar, repartir, revisar y corregir alertas del panel PQM. La interfaz usa Next.js App Router y Supabase; el motor R01–R29, EST, JER y ortografía sigue ejecutándose localmente en un Web Worker.
+Aplicación interna para detectar, repartir, revisar y corregir alertas del panel PQM. La interfaz usa Next.js App Router y Supabase; el motor R01–R30, EST, JER y ortografía sigue ejecutándose localmente en un Web Worker.
 
 Cada jornada registra si el estudio trae código de barras. Cuando no lo trae, R08, R09, R10 y R25 agrupan por descripción; R25 utiliza el umbral `promedio + 15 %` en ambas modalidades.
+
+R30 revisa la calidad de `Descripcion`: producto compatible al inicio, marca exacta después —excepto `NO IDENTIFICABLE` y `SIN MARCA`— y gramaje posterior coherente con kilos o litros. La consistencia de producto se apoya de forma conservadora en prefijos repetidos de la propia carga y siempre queda para revisión manual.
 
 ## Flujo operativo
 

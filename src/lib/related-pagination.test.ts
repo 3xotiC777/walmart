@@ -55,6 +55,23 @@ describe('paginación de registros relacionados', () => {
     expect(page.nextCursor).toBe('149');
   });
 
+  it('conserva cantidad y precios en los valores de contexto paginados', () => {
+    const related = row(25, { group_id: 'G-PRECIO', is_alert: false });
+    related.field_values = {
+      cantidad_comprada: 3,
+      Precio_Unidad: 2_600,
+      Precio_Total_Preciador: 7_800,
+    };
+
+    const page = buildRelatedPage([related], []);
+
+    expect(page.items[0]?.field_values).toEqual({
+      cantidad_comprada: 3,
+      Precio_Unidad: 2_600,
+      Precio_Total_Preciador: 7_800,
+    });
+  });
+
   it('rechaza cursores ambiguos o fuera del rango seguro', () => {
     expect(parseRelatedCursor('149')).toBe(149);
     expect(parseRelatedCursor('149.5')).toBeNull();

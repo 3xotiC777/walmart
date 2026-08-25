@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { getRuleDefinitions } from './rules';
+import { compareRuleIds, getRuleDefinitions } from './rules';
 import { ORTHOGRAPHY_RULE, type SourceDataset } from './types';
 
 export interface ReportUpload {
@@ -91,10 +91,16 @@ export function buildCollaborativeReportWorkbook(input: {
   dataset?: SourceDataset;
 }): ArrayBuffer {
   const taskById = new Map(input.tasks.map((task) => [task.id, task]));
+  const orderedAlerts = [...input.alerts].sort((left, right) => (
+    compareRuleIds(left.rule_code, right.rule_code)
+      || (taskRow(taskById.get(left.task_id))?.excel_row ?? Number.MAX_SAFE_INTEGER)
+        - (taskRow(taskById.get(right.task_id))?.excel_row ?? Number.MAX_SAFE_INTEGER)
+      || left.id.localeCompare(right.id, 'es')
+  ));
   const decisionByAlert = new Map(input.decisions.map((decision) => [decision.alert_id, decision]));
   const nameByUser = new Map(input.profiles.map((profile) => [profile.user_id, profile.display_name]));
   const alertsByTask = new Map<string, ReportAlert[]>();
-  for (const alert of input.alerts) {
+  for (const alert of orderedAlerts) {
     const values = alertsByTask.get(alert.task_id) ?? [];
     values.push(alert);
     alertsByTask.set(alert.task_id, values);
@@ -158,7 +164,7 @@ export function buildCollaborativeReportWorkbook(input: {
     'Solución_Propuesta', 'Confianza', 'Método', 'Responsable', 'Estado',
     'Decisión', 'Valor_Final', 'Fecha_Decisión',
   ];
-  const alertRows = input.alerts.map((alert) => {
+  const alertRows = orderedAlerts.map((alert) => {
     const task = taskById.get(alert.task_id);
     const row = taskRow(task);
     const block = taskBlock(task);

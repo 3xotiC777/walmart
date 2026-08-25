@@ -33,7 +33,7 @@ const DEFAULT_ROW: Record<string, CellValue> = {
   codiGo_barras: '001',
   codiGo_estandar: '',
   Descripcion: 'PRODUCTO MARCA',
-  Gramaje: 1,
+  Gramaje: 'NO ESPECIFICA',
   unidad_de_Medida: 'UNIDADES',
   cantidad_comprada: 1,
   Precio_Unidad: 10,

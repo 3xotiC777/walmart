@@ -168,6 +168,12 @@ button { cursor: pointer; }
 .review-link { color: var(--blue); font-weight: 820; text-decoration: none; white-space: nowrap; }
 .related-actions { display: flex; min-width: 190px; flex-direction: column; align-items: flex-start; gap: 7px; }
 .related-actions .button { min-height: 32px; padding: 7px 10px; white-space: normal; text-align: left; }
+.related-context-list { display: grid; min-width: 230px; gap: 5px; }
+.related-context-item { display: grid; grid-template-columns: minmax(112px, auto) 1fr; align-items: baseline; gap: 8px; }
+.related-context-item small { color: var(--muted); }
+.related-context-item strong { color: var(--ink); font-size: .78rem; font-weight: 700; }
+.related-context-item.price strong { color: #075db4; font-variant-numeric: tabular-nums; }
+.related-context-item.quantity strong { color: #14745b; font-variant-numeric: tabular-nums; }
 .row-main { max-width: 320px; }.row-main strong { display: block; }.row-main small { display: block; margin-top: 4px; color: var(--muted); line-height: 1.4; }
 .rule-badge { display: inline-flex; padding: 5px 7px; color: #a34819; background: var(--orange-soft); border-radius: 7px; font-size: 9px; font-weight: 900; }
 .rule-badge + .rule-badge { margin-left: 4px; }

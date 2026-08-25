@@ -32,6 +32,7 @@ describe('Excel de salida', () => {
     expect(String(summary.find((row) => row[0] === 'JER-01')?.[5])).toContain('columna Producto');
     expect(summary.some((row) => row[0] === 'R28')).toBe(true);
     expect(summary.some((row) => row[0] === 'R29')).toBe(true);
+    expect(summary.some((row) => row[0] === 'R30')).toBe(true);
     expect(summary.find((row) => row[0] === 'ORT-01')?.slice(1, 5)).toEqual([
       'Ortografía y espacios',
       'Adicional',
@@ -80,6 +81,33 @@ describe('Excel de salida', () => {
     expect(priceAlert?.Porcentaje_Diferencia_Promedio).toBeCloseTo(67.5 / 32.5);
     const priceAlertIndex = alertRows.findIndex((row) => row.Regla === 'R25');
     expect(workbook.Sheets.Alertas[XLSX.utils.encode_cell({ r: priceAlertIndex + 1, c: 14 })].z).toBe('0.00%');
+  });
+
+  it('exporta el evento R30 y lo documenta inmediatamente después de R29', () => {
+    const dataset = makeDataset([{
+      Producto_Wm: 'PRODUCTO A',
+      Marca_Wm: 'MARCA',
+      Descripcion: 'MARCA PRODUCTO A 1LT',
+      Gramaje: 1,
+      unidad_de_Medida: 'LITROS',
+    }]);
+    const workbook = XLSX.read(
+      buildOutputWorkbook(dataset, validateDataset(dataset, TEST_HIERARCHY)),
+      { type: 'array' },
+    );
+    const summary = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumen, { header: 1 });
+    const r29Index = summary.findIndex((row) => row[0] === 'R29');
+    const r30Index = summary.findIndex((row) => row[0] === 'R30');
+    const alertRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas);
+
+    expect(r30Index).toBe(r29Index + 1);
+    expect(summary[r30Index].slice(3, 5)).toEqual([1, 1]);
+    expect(alertRows.filter((row) => row.Regla === 'R30')).toEqual([
+      expect.objectContaining({
+        Campo: 'Descripcion',
+        Valor_Observado: 'MARCA PRODUCTO A 1LT',
+      }),
+    ]);
   });
 
   it('documenta en el Excel las reglas adaptadas al modo sin código', () => {

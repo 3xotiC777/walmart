@@ -157,6 +157,7 @@ describe('reporte colaborativo de alertas', () => {
 
     const alertRows = rows(workbook.Sheets.Alertas);
     expect(alertRows).toHaveLength(4);
+    expect(alertRows.slice(1).map((row) => row[0])).toEqual(['R01', 'R25', 'ORT-01']);
     const r01 = rowObject(alertRows[0], alertRows[1]);
     expect(r01).toMatchObject({
       Regla: 'R01',
@@ -171,7 +172,9 @@ describe('reporte colaborativo de alertas', () => {
       Valor_Final: 'MANDARINA IMPORTADA 1KG',
       Fecha_Decisión: '2026-08-24T16:00:00.000Z',
     });
-    const pending = rowObject(alertRows[0], alertRows[3]);
+    const pendingRow = alertRows.slice(1).find((row) => row[0] === 'R25');
+    expect(pendingRow).toBeDefined();
+    const pending = rowObject(alertRows[0], pendingRow!);
     expect(pending).toMatchObject({
       Regla: 'R25',
       Promedio_Grupo: 2_000,
@@ -183,7 +186,8 @@ describe('reporte colaborativo de alertas', () => {
       Decisión: '',
       Valor_Final: '',
     });
-    expect(workbook.Sheets.Alertas.M4?.z).toBe('0.00%');
+    const pendingRowIndex = alertRows.findIndex((row) => row[0] === 'R25');
+    expect(workbook.Sheets.Alertas[XLSX.utils.encode_cell({ r: pendingRowIndex, c: 12 })]?.z).toBe('0.00%');
 
     const taskRows = rows(workbook.Sheets.Registros_a_revisar);
     expect(taskRows).toHaveLength(3);
@@ -202,6 +206,77 @@ describe('reporte colaborativo de alertas', () => {
       Regla: 'ORT-01',
       Decisión: 'confirmed_correct',
       Responsable: 'Ana Validadora',
+    });
+  });
+
+  it('ubica R30 después de R29 y conserva su revisión manual como 1 afectado y 1 alerta', () => {
+    const output = buildCollaborativeReportWorkbook({
+      upload: {
+        display_name: 'PQM R30',
+        has_barcode: true,
+        total_rows: 1,
+        task_count: 1,
+        alert_count: 1,
+        orthography_count: 0,
+        pending_task_count: 1,
+        corrected_cell_count: 0,
+        confirmed_correct_count: 0,
+        created_at: '2026-08-25T01:00:00.000Z',
+      },
+      tasks: [{
+        id: 'task-r30',
+        status: 'pending',
+        source_rows: {
+          excel_row: 2,
+          row_id: 'ROW-R30',
+          id_dn_w: 'DN-R30',
+          barcode: '00030',
+          description: 'MARCA PRODUCTO A 1LT',
+        },
+        assignment_blocks: null,
+      }],
+      alerts: [{
+        id: 'alert-r30',
+        task_id: 'task-r30',
+        rule_code: 'R30',
+        category: 'validation',
+        affected_field: 'Descripcion',
+        original_value: 'MARCA PRODUCTO A 1LT',
+        expected_or_conflicts: 'Producto → marca → gramaje',
+        detail: 'El producto aparece después de la marca.',
+        suggested_value: null,
+        suggestion_confidence: 'none',
+        suggestion_method: 'manual-review',
+        status: 'pending',
+      }],
+      decisions: [],
+      profiles: [],
+      conflictGroups: [{ id: 'group-r30', rule_code: 'R30', affected_row_count: 1 }],
+    });
+
+    const workbook = XLSX.read(output, { type: 'array' });
+    const summary = rows(workbook.Sheets.Resumen);
+    const r29Index = summary.findIndex((row) => row[0] === 'R29');
+    const r30Index = summary.findIndex((row) => row[0] === 'R30');
+    expect(r30Index).toBe(r29Index + 1);
+    expect(summary[r30Index].slice(1, 8)).toEqual([
+      'Calidad de descripción',
+      'Automático',
+      1,
+      1,
+      1,
+      0,
+      expect.stringContaining('Producto_Wm'),
+    ]);
+
+    const alertRows = rows(workbook.Sheets.Alertas);
+    expect(rowObject(alertRows[0], alertRows[1])).toMatchObject({
+      Regla: 'R30',
+      Columna_Afectada: 'Descripcion',
+      Solución_Propuesta: null,
+      Confianza: 'none',
+      Método: 'manual-review',
+      Estado: 'pending',
     });
   });
 });

@@ -8,6 +8,11 @@ import type {
   SourceRecord,
   ValidationResult,
 } from './types';
+import {
+  assessDescriptionQuality,
+  buildProductDescriptionEvidence,
+  descriptionContainsExactBrand,
+} from './descriptionQuality';
 import { classifyDescriptionGramaje } from './descriptionGramaje';
 
 interface CardinalityRule {
@@ -66,6 +71,11 @@ const AUTOMATIC_RULES: RuleDefinition[] = [
     'R29',
     'Gramaje sospechoso en descripción',
     'Compara las descripciones de un mismo código y alerta unidades finales incompletas o cantidades de gramaje distintas; no modifica los registros.',
+  ],
+  [
+    'R30',
+    'Calidad de descripción',
+    'La descripción debe comenzar con un producto compatible con Producto_Wm, incluir después la marca exacta de Marca_Wm —salvo NO IDENTIFICABLE o SIN MARCA— y ubicar luego el gramaje correspondiente.',
   ],
 ].map(([id, name, description]) => ({
   id,
@@ -127,6 +137,13 @@ const ADDITIONAL_RULES: RuleDefinition[] = [
 
 export const RULE_DEFINITIONS = [...AUTOMATIC_RULES, ...ADDITIONAL_RULES];
 const RULE_BY_ID = new Map(RULE_DEFINITIONS.map((rule) => [rule.id, rule]));
+const RULE_ORDER = new Map(RULE_DEFINITIONS.map((rule, index) => [rule.id, index]));
+
+export function compareRuleIds(left: string, right: string): number {
+  const leftOrder = RULE_ORDER.get(left) ?? (left === 'ORT-01' ? RULE_DEFINITIONS.length : Number.MAX_SAFE_INTEGER);
+  const rightOrder = RULE_ORDER.get(right) ?? (right === 'ORT-01' ? RULE_DEFINITIONS.length : Number.MAX_SAFE_INTEGER);
+  return leftOrder - rightOrder || left.localeCompare(right, 'es', { numeric: true });
+}
 
 const CARDINALITY_RULES: CardinalityRule[] = [
   { id: 'R01', keyFields: ['codiGo_barras'], targetField: 'Descripcion' },
@@ -385,7 +402,7 @@ export function validateDataset(
   for (const record of dataset.records) {
     const brand = normalizeText(record.fields.Marca_Wm);
     const description = normalizeText(record.fields.Descripcion);
-    if (!brand || !description || SPECIAL_BRANDS.has(brand) || description.includes(brand)) continue;
+    if (!brand || !description || SPECIAL_BRANDS.has(brand) || descriptionContainsExactBrand(description, brand)) continue;
     addAlert({
       ...baseAlert(record, 'R15'),
       key: displayValue(record.fields.codiGo_barras),
@@ -393,6 +410,39 @@ export function validateDataset(
       observed: displayValue(record.fields.Descripcion),
       expected: `La descripción debe incluir la marca ${displayValue(record.fields.Marca_Wm)}`,
       detail: `La marca "${displayValue(record.fields.Marca_Wm)}" no aparece en la descripción.`,
+    });
+  }
+
+  const productEvidenceByRow = buildProductDescriptionEvidence(dataset.records.map((record) => ({
+    sourceRow: record.excelRow,
+    description: record.fields.Descripcion,
+    product: record.fields.Producto_Wm,
+  })));
+
+  for (const record of dataset.records) {
+    const quality = assessDescriptionQuality({
+      description: record.fields.Descripcion,
+      product: record.fields.Producto_Wm,
+      brand: record.fields.Marca_Wm,
+      gramaje: record.fields.Gramaje,
+      unit: record.fields.unidad_de_Medida,
+      productEvidence: productEvidenceByRow.get(record.excelRow),
+    });
+    if (!quality) continue;
+    const nonBrandIssues = quality.issues.filter((issue) => issue.code !== 'BRAND_MISSING');
+    // R15 ya representa una marca ausente. Evitar un segundo evento cuando
+    // ese es el único defecto reduce trabajo duplicado para el validador.
+    if (nonBrandIssues.length === 0) continue;
+
+    addAlert({
+      ...baseAlert(record, 'R30'),
+      key: displayValue(record.fields.codiGo_barras)
+        || displayValue(record.fields['Row-Id'])
+        || `Fila ${record.excelRow}`,
+      field: 'Descripcion',
+      observed: displayValue(record.fields.Descripcion),
+      expected: quality.expectedPattern,
+      detail: `${quality.issues.map((issue) => issue.message).join(' ')} Estructura esperada: producto → marca → gramaje.`,
     });
   }
 
