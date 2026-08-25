@@ -60,16 +60,23 @@ class ApiRequestError extends Error {
   }
 }
 
-async function postJson(url: string, body: unknown, attempts = 3, signal?: AbortSignal) {
+async function postJson<T = Record<string, unknown>>(url: string, body: unknown, attempts = 3, signal?: AbortSignal): Promise<T> {
   let lastError = new Error('No fue posible guardar el avance.');
   let lastRetryable = false;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     signal?.throwIfAborted();
     try {
       const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
-      const result = await response.json().catch(() => ({}));
-      if (response.ok) return result;
-      lastError = new Error(result.message ?? lastError.message);
+      const rawResponse = await response.text();
+      let result: { message?: string; retryable?: boolean } = {};
+      if (rawResponse) {
+        try { result = JSON.parse(rawResponse) as typeof result; } catch { /* Vercel puede responder texto o HTML. */ }
+      }
+      if (response.ok) return result as T;
+      const fallback = response.status === 413
+        ? 'La plataforma rechazó un lote por su tamaño. Actualiza la página e inténtalo nuevamente; el archivo original permanece intacto.'
+        : `No fue posible guardar el avance (HTTP ${response.status}).`;
+      lastError = new Error(result.message ?? fallback);
       lastRetryable = Boolean(result.retryable) || response.status >= 500 || response.status === 429;
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
@@ -140,7 +147,7 @@ export function UploadWorkspace() {
       setMetrics(result.collaboration.metrics);
       setMessage('Verificando que los archivos sean únicos…'); setProgress(30);
       signal.throwIfAborted();
-      const created = await postJson('/api/uploads', {
+      const created = await postJson<{ uploadId: string; panelPath: string; invoicePath: string; resumed?: boolean }>('/api/uploads', {
         panelName: panel.name, invoiceName: invoices.name, displayName: panel.name,
         panelHash: panelSnapshot.sha256, invoiceHash: invoiceSnapshot.sha256,
         panelSize: panelSnapshot.file.size, invoiceSize: invoiceSnapshot.file.size,
