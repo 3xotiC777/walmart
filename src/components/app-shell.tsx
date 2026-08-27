@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { Viewer } from '@/lib/auth';
-import { FileIcon, GridIcon, LogoutIcon, TasksIcon, UploadCloudIcon, UsersIcon } from './icons';
+import { FileIcon, GridIcon, LogoutIcon, MediaIcon, TasksIcon, UploadCloudIcon, UsersIcon } from './icons';
 import { AutoRefresh } from './auto-refresh';
 
 export function AppShell({ viewer, children }: { viewer: Viewer; children: ReactNode }) {
@@ -11,6 +11,7 @@ export function AppShell({ viewer, children }: { viewer: Viewer; children: React
       { href: '/workspace', label: 'Tablero', icon: GridIcon },
       { href: '/workspace/cargas/nueva', label: 'Nueva jornada', icon: UploadCloudIcon },
       { href: '/workspace/tareas', label: 'Revisión', icon: TasksIcon },
+      { href: '/workspace/multimedia', label: 'Multimedia', icon: MediaIcon },
       { href: '/workspace/equipo', label: 'Equipo', icon: UsersIcon },
       { href: '/workspace/historia', label: 'Historia', icon: FileIcon },
       { href: '/workspace/exportar', label: 'Descargas', icon: FileIcon },
@@ -18,6 +19,7 @@ export function AppShell({ viewer, children }: { viewer: Viewer; children: React
     : [
       { href: '/workspace', label: 'Mi resumen', icon: GridIcon },
       { href: '/workspace/tareas', label: 'Mis tareas', icon: TasksIcon },
+      { href: '/workspace/multimedia', label: 'Multimedia', icon: MediaIcon },
     ];
 
   return (

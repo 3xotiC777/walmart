@@ -18,3 +18,4 @@ export function CheckIcon(props: IconProps) { return <svg {...common} {...props}
 export function EyeIcon(props: IconProps) { return <svg {...common} {...props}><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>; }
 export function DownloadIcon(props: IconProps) { return <svg {...common} {...props}><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>; }
 export function AlertIcon(props: IconProps) { return <svg {...common} {...props}><path d="M10.3 3.8 2.2 18a2 2 0 0 0 1.7 3h16.2a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>; }
+export function MediaIcon(props: IconProps) { return <svg {...common} {...props}><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 4.5-4.5 3.2 3.2 2.3-2.3 6 6"/></svg>; }
