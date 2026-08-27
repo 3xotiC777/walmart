@@ -12,6 +12,7 @@ export function AppShell({ viewer, children }: { viewer: Viewer; children: React
       { href: '/workspace/cargas/nueva', label: 'Nueva jornada', icon: UploadCloudIcon },
       { href: '/workspace/tareas', label: 'Revisión', icon: TasksIcon },
       { href: '/workspace/equipo', label: 'Equipo', icon: UsersIcon },
+      { href: '/workspace/historia', label: 'Historia', icon: FileIcon },
       { href: '/workspace/exportar', label: 'Descargas', icon: FileIcon },
     ]
     : [

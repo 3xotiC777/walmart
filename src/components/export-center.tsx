@@ -8,6 +8,7 @@ import type { parseWorkbook } from '@/lib/parser';
 import type { WorkbookCellCorrection, WorkbookSuggestion } from '@/lib/workbookExports';
 import type { HierarchyCatalog } from '@/lib/types';
 import { buildCorrectionTraceabilityValues, CORRECTION_TRACEABILITY_HEADER } from '@/lib/correction-attribution';
+import type { ExportAuditKind } from '@/lib/export-audit';
 
 interface UploadInfo { id: string; display_name: string; panel_object_path: string; has_barcode: boolean; total_rows: number; task_count: number; alert_count: number; orthography_count: number; pending_task_count: number; corrected_cell_count: number; confirmed_correct_count: number; created_at: string }
 interface PreflightSummary {
@@ -129,6 +130,25 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
     }
   }
 
+  async function recordDownload(kind: ExportAuditKind, fileName: string, isDraft: boolean, summary: PreflightSummary, uploadVersion: number) {
+    const response = await fetch(`/api/uploads/${upload.id}/downloads`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        kind,
+        fileName,
+        isDraft,
+        pendingTasks: summary.pendingTasks,
+        remainingAlerts: summary.remainingAlertCount,
+        uploadVersion,
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as { message?: string } | null;
+      throw new Error(payload?.message ?? 'No fue posible registrar la descarga en Historia.');
+    }
+  }
+
   async function run(kind: 'report' | 'suggestions' | 'corrected') {
     setBusy(kind); setError(''); setPreflight(null);
     try {
@@ -163,7 +183,7 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
         hasBarcode: upload.has_barcode,
       });
       const requiresDraft = Number(data.snapshot.pending_task_count) > 0 || !revalidation.safeForFinal;
-      setPreflight({
+      const preflightSummary: PreflightSummary = {
         pendingTasks: Number(data.snapshot.pending_task_count),
         remainingAlertCount: revalidation.remainingAlerts.length,
         invalidConfirmedCorrectCount: revalidation.invalidConfirmedCorrect.length,
@@ -171,10 +191,14 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
         orthographyAlertCount: revalidation.orthographyAlertCount,
         alerts: revalidation.remainingAlerts.slice(0, PREFLIGHT_ALERT_PREVIEW),
         safeForFinal: !requiresDraft,
-      });
+      };
+      setPreflight(preflightSummary);
       if (kind === 'report') {
         await assertSnapshotVersion(data.snapshot.version);
-        save(buildCollaborativeReportWorkbook({ upload: currentUpload, tasks: data.tasks, alerts: data.alerts, decisions: data.decisions, profiles: data.profiles, invoices: data.invoices, conflictGroups: data.conflictGroups, dataset }), `Reporte_Alertas_PQM_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        const fileName = `Reporte_Alertas_PQM_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        const buffer = buildCollaborativeReportWorkbook({ upload: currentUpload, tasks: data.tasks, alerts: data.alerts, decisions: data.decisions, profiles: data.profiles, invoices: data.invoices, conflictGroups: data.conflictGroups, dataset });
+        await recordDownload(kind, fileName, false, preflightSummary, Number(data.snapshot.version));
+        save(buffer, fileName);
       } else {
         if (kind === 'suggestions') {
           const recordByRow = new Map(dataset.records.map((record) => [record.excelRow, record]));
@@ -195,7 +219,10 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
             else { unique.delete(key); conflicted.add(key); }
           }
           await assertSnapshotVersion(data.snapshot.version);
-          save(buildSuggestionsWorkbook(dataset, [...unique.values()]), `Base_PQM_con_Sugerencias_${new Date().toISOString().slice(0, 10)}.xlsx`);
+          const fileName = `Base_PQM_con_Sugerencias_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          const buffer = buildSuggestionsWorkbook(dataset, [...unique.values()]);
+          await recordDownload(kind, fileName, false, preflightSummary, Number(data.snapshot.version));
+          save(buffer, fileName);
         } else {
           if (requiresDraft) {
             const reasons = [
@@ -237,14 +264,17 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
             username: profile.username,
           })));
           await assertSnapshotVersion(data.snapshot.version);
-          save(patchOriginalWorkbook(originalBuffer, corrections, {
+          const fileName = buildCorrectedWorkbookFileName(requiresDraft ? Math.max(1, Number(data.snapshot.pending_task_count)) : 0);
+          const buffer = patchOriginalWorkbook(originalBuffer, corrections, {
             appendedColumn: {
               columnIndex: dataset.headers.length,
               header: CORRECTION_TRACEABILITY_HEADER,
               values: traceability,
               width: 42,
             },
-          }), buildCorrectedWorkbookFileName(requiresDraft ? Math.max(1, Number(data.snapshot.pending_task_count)) : 0));
+          });
+          await recordDownload(kind, fileName, requiresDraft, preflightSummary, Number(data.snapshot.version));
+          save(buffer, fileName);
         }
       }
     } catch (cause) { setPreflight(null); setError(cause instanceof Error ? cause.message : 'No fue posible generar el archivo.'); }
