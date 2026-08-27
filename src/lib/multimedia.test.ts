@@ -1,6 +1,12 @@
 import * as XLSX from 'xlsx';
 import { describe, expect, it } from 'vitest';
-import { MultimediaWorkbookError, parseMultimediaWorkbook } from './multimedia';
+import {
+  combineMultimediaCatalogs,
+  MultimediaWorkbookError,
+  normalizeSubjectIdKey,
+  parseInterviewDataWorkbook,
+  parseMultimediaWorkbook,
+} from './multimedia';
 
 const HEADERS = [
   'SubjectID', 'QuestionText', 'Name', 'TimeStamp', 'ImageURL',
@@ -57,5 +63,60 @@ describe('lector de multimedia de Dooblo', () => {
   it('rechaza libros sin las columnas requeridas', () => {
     expect(() => parseMultimediaWorkbook(workbookBuffer([], ['SubjectID', 'Name']), 'invalido.xlsx'))
       .toThrow(MultimediaWorkbookError);
+  });
+});
+
+describe('cruce con datos de entrevista', () => {
+  it('solo exige SubjectID y conserva todas las demás columnas dinámicas', () => {
+    const catalog = parseInterviewDataWorkbook(workbookBuffer([
+      ['001001', 'auditor.ana', 'Approved', 'MARCA A', 'REEMPLAZO B'],
+      ['001002', 'auditor.luis', 'Rejected', '', 'REEMPLAZO C'],
+    ], ['SubjectID', 'Auditor', 'Estatus', 'Marca Cualquiera_1', 'Reemplazo libre']), 'datos.xlsx');
+
+    expect(catalog.columns.map((column) => column.name)).toEqual([
+      'Auditor', 'Estatus', 'Marca Cualquiera_1', 'Reemplazo libre',
+    ]);
+    expect(catalog.groups).toHaveLength(2);
+    expect(catalog.groups[0].subjectId).toBe('001001');
+    expect(catalog.groups[0].rows[0].fields.map((field) => field.value)).toEqual([
+      'auditor.ana', 'Approved', 'MARCA A', 'REEMPLAZO B',
+    ]);
+  });
+
+  it('acepta un archivo que únicamente contiene SubjectID y agrupa filas repetidas', () => {
+    const catalog = parseInterviewDataWorkbook(workbookBuffer([
+      [1001],
+      [1001],
+    ], ['SubjectID']), 'solo-id.xlsx');
+
+    expect(catalog.columns).toEqual([]);
+    expect(catalog.groups).toHaveLength(1);
+    expect(catalog.groups[0].rows).toHaveLength(2);
+  });
+
+  it('cruza IDs numéricos aunque un archivo conserve ceros iniciales', () => {
+    const multimedia = parseMultimediaWorkbook(workbookBuffer([
+      ['001001', 'Foto frontal', 'foto.jpg', 25569, mediaUrl('foto.jpg', 1), true, 'FOTO', 100],
+    ]), 'adjuntos.xlsx');
+    const data = parseInterviewDataWorkbook(workbookBuffer([
+      [1001, 'auditor.ana'],
+      [2002, 'auditor.luis'],
+    ], ['SubjectID', 'Auditor']), 'datos.xlsx');
+    const combined = combineMultimediaCatalogs(multimedia, data);
+
+    expect(normalizeSubjectIdKey('001001')).toBe('1001');
+    expect(combined).toHaveLength(2);
+    expect(combined.find((subject) => subject.subjectKey === '1001')).toMatchObject({
+      subjectId: '001001',
+      images: [{ name: 'foto.jpg' }],
+      dataRows: [{ fields: [{ name: 'Auditor', value: 'auditor.ana' }] }],
+    });
+    expect(combined.find((subject) => subject.subjectKey === '2002')?.images).toEqual([]);
+  });
+
+  it('rechaza datos sin SubjectID aunque tengan otras columnas', () => {
+    expect(() => parseInterviewDataWorkbook(workbookBuffer([
+      ['auditor.ana'],
+    ], ['Auditor']), 'sin-id.xlsx')).toThrow('SubjectID');
   });
 });

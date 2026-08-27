@@ -1,6 +1,10 @@
 import * as XLSX from 'xlsx';
+import { normalizeSubjectIdKey } from './multimedia-cross';
+
+export { combineMultimediaCatalogs, normalizeSubjectIdKey } from './multimedia-cross';
 
 export const MULTIMEDIA_REQUIRED_HEADERS = ['SubjectID', 'Name', 'TimeStamp', 'ImageURL'] as const;
+export const INTERVIEW_REQUIRED_HEADER = 'SubjectID';
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp']);
 const AUDIO_EXTENSIONS = new Set(['m4a', 'mp3', 'wav', 'aac', 'ogg']);
@@ -42,6 +46,43 @@ export interface MultimediaCatalog {
   totalImages: number;
   totalAudios: number;
   unavailableItems: number;
+}
+
+export interface InterviewDataField {
+  columnIndex: number;
+  name: string;
+  value: string;
+}
+
+export interface InterviewDataRow {
+  excelRow: number;
+  fields: InterviewDataField[];
+}
+
+export interface InterviewDataSubject {
+  subjectKey: string;
+  subjectId: string;
+  rows: InterviewDataRow[];
+}
+
+export interface InterviewDataCatalog {
+  sourceFile: string;
+  sheetName: string;
+  columns: Array<{ columnIndex: number; name: string }>;
+  groups: InterviewDataSubject[];
+  totalRows: number;
+  ignoredRows: number;
+}
+
+export interface CombinedMultimediaSubject {
+  subjectKey: string;
+  subjectId: string;
+  timestamp: string;
+  timestampSort: number;
+  images: MultimediaItem[];
+  audios: MultimediaItem[];
+  unavailableCount: number;
+  dataRows: InterviewDataRow[];
 }
 
 export class MultimediaWorkbookError extends Error {
@@ -133,6 +174,10 @@ function formattedCell(
   if (cell?.w !== undefined && cell.w !== '') return String(cell.w).trim();
   if (typeof fallback === 'number' && Number.isInteger(fallback)) return String(fallback);
   return String(fallback ?? '').trim();
+}
+
+function normalizedHeader(value: CellValue): string {
+  return String(value ?? '').replace(/^\uFEFF/, '').trim();
 }
 
 function findMultimediaSheet(workbook: XLSX.WorkBook): { sheet: XLSX.WorkSheet; sheetName: string; matrix: CellValue[][]; headers: string[] } {
@@ -256,5 +301,86 @@ export function parseMultimediaWorkbook(buffer: ArrayBuffer, sourceFile: string)
     totalImages,
     totalAudios,
     unavailableItems,
+  };
+}
+
+function findInterviewSheet(workbook: XLSX.WorkBook): {
+  sheet: XLSX.WorkSheet;
+  sheetName: string;
+  matrix: CellValue[][];
+  headerRowIndex: number;
+  headers: string[];
+  subjectColumn: number;
+} {
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
+    const matrix = XLSX.utils.sheet_to_json<CellValue[]>(sheet, {
+      header: 1,
+      raw: true,
+      defval: null,
+      blankrows: true,
+    });
+    const scanLimit = Math.min(matrix.length, 25);
+    for (let headerRowIndex = 0; headerRowIndex < scanLimit; headerRowIndex += 1) {
+      const headers = (matrix[headerRowIndex] ?? []).map(normalizedHeader);
+      const subjectColumn = headers.findIndex((header) => header.toLocaleLowerCase('es') === INTERVIEW_REQUIRED_HEADER.toLocaleLowerCase('es'));
+      if (subjectColumn >= 0) return { sheet, sheetName, matrix, headerRowIndex, headers, subjectColumn };
+    }
+  }
+  throw new MultimediaWorkbookError(`No se encontró una hoja con la columna obligatoria ${INTERVIEW_REQUIRED_HEADER}.`);
+}
+
+export function parseInterviewDataWorkbook(buffer: ArrayBuffer, sourceFile: string): InterviewDataCatalog {
+  let workbook: XLSX.WorkBook;
+  try {
+    workbook = XLSX.read(buffer, { type: 'array', cellDates: true, cellText: true, dense: false });
+  } catch {
+    throw new MultimediaWorkbookError('No fue posible leer el archivo de datos. Verifica que sea un Excel .xlsx válido.');
+  }
+
+  const { sheet, sheetName, matrix, headerRowIndex, headers, subjectColumn } = findInterviewSheet(workbook);
+  const columns = headers
+    .map((name, columnIndex) => ({ columnIndex, name }))
+    .filter((column) => column.columnIndex !== subjectColumn && column.name !== '');
+  const groups = new Map<string, InterviewDataSubject>();
+  let ignoredRows = 0;
+  let totalRows = 0;
+
+  for (let matrixIndex = headerRowIndex + 1; matrixIndex < matrix.length; matrixIndex += 1) {
+    const row = matrix[matrixIndex] ?? [];
+    if (!row.some(meaningful)) continue;
+    totalRows += 1;
+    const excelRow = matrixIndex + 1;
+    const subjectId = formattedCell(sheet, excelRow, subjectColumn, row[subjectColumn]);
+    const subjectKey = normalizeSubjectIdKey(subjectId);
+    if (!subjectKey) {
+      ignoredRows += 1;
+      continue;
+    }
+    const dataRow: InterviewDataRow = {
+      excelRow,
+      fields: columns.map((column) => ({
+        columnIndex: column.columnIndex,
+        name: column.name,
+        value: formattedCell(sheet, excelRow, column.columnIndex, row[column.columnIndex]),
+      })),
+    };
+    const group = groups.get(subjectKey) ?? { subjectKey, subjectId, rows: [] };
+    group.rows.push(dataRow);
+    groups.set(subjectKey, group);
+  }
+
+  if (groups.size === 0) {
+    throw new MultimediaWorkbookError('El archivo de datos no contiene SubjectID para cruzar.');
+  }
+
+  return {
+    sourceFile,
+    sheetName,
+    columns,
+    groups: [...groups.values()].sort((left, right) => left.subjectId.localeCompare(right.subjectId, 'es', { numeric: true })),
+    totalRows,
+    ignoredRows,
   };
 }
