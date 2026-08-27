@@ -145,6 +145,10 @@ export function buildOutputWorkbook(
     'Motivo de Alerta': alert.reason,
     'probabilidad de error': alert.probability,
     'Descripcion correcta': alert.correctedDescription,
+    Confianza: alert.confidence,
+    Método: alert.method,
+    Detalle: alert.detail,
+    'Palabras dudosas': alert.doubtfulTokens.join(', '),
   }));
   const orthographySheet = XLSX.utils.json_to_sheet(orthographyRows, {
     header: [
@@ -155,10 +159,14 @@ export function buildOutputWorkbook(
       'Motivo de Alerta',
       'probabilidad de error',
       'Descripcion correcta',
+      'Confianza',
+      'Método',
+      'Detalle',
+      'Palabras dudosas',
     ],
   });
   addAutofilter(orthographySheet);
-  setColumns(orthographySheet, [24, 18, 54, 24, 28, 22, 54]);
+  setColumns(orthographySheet, [24, 18, 54, 24, 32, 22, 54, 14, 28, 70, 36]);
   XLSX.utils.book_append_sheet(workbook, orthographySheet, 'Alertas_Ortografia');
 
   const bytes = XLSX.write(workbook, {

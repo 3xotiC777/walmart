@@ -1,0 +1,14 @@
+{
+  "HELADO DOS PINOS VETEADO CHOCOLATE": {
+    "recomendado": "HELADO DOS PINOS VETEADO CHOCOLATE",
+    "motivo": "Validado por analista",
+    "similitud": "100%",
+    "detalle": "Aprobado manualmente como producto legítimo"
+  },
+  "CAMINO DE MESA CAFE CIRC": {
+    "recomendado": "CAMINO DE MESA CAFE CIRCULAR",
+    "motivo": "Texto/Ortografía (Validado)",
+    "similitud": "95.0%",
+    "detalle": "'CIRC' → 'CIRCULAR' (validación humana aprendida)"
+  }
+}

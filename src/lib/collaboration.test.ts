@@ -259,6 +259,7 @@ describe('manifiesto colaborativo', () => {
     const dataset = makeDataset([
       { codiGo_barras: '001', Descripcion: 'PRODUCTO MARCA' },
       { codiGo_barras: '001', Descripcion: 'PRODUCTO MARCA' },
+      { codiGo_barras: '001', Descripcion: 'PRODUCTO MARCA' },
       { codiGo_barras: '001', Descripcion: '  PRODUCTO  MARCAA  ' },
     ]);
     const result = onlyRules(validateDataset(dataset, TEST_HIERARCHY), ['R01']);
@@ -271,8 +272,28 @@ describe('manifiesto colaborativo', () => {
     expect(manifest.metrics).toMatchObject({ reviewTasks: 1, alertEvents: 2, orthographyAlerts: 1 });
     expect(manifest.tasks[0].alerts.find((alert) => alert.ruleId === 'ORT-01')?.suggestion).toMatchObject({
       value: 'PRODUCTO MARCA',
-      method: 'unique-reference',
+      method: 'orthography-frequency',
       autoApplicable: true,
+    });
+  });
+
+  it('mantiene manual una sugerencia ortográfica de confianza media', () => {
+    const dataset = makeDataset([
+      { Descripcion: 'PRODUCTO MARCA AZUL' },
+      { Descripcion: 'PRODUCTO MARCA AZUL' },
+      { Descripcion: 'PRODUCTO MARCA AZUL' },
+      { Descripcion: 'PRODUCTO MARCA AZUL EXTRA' },
+    ]);
+    const orthography = generateOrthographyAlerts(dataset);
+
+    const manifest = createCollaborationManifest(dataset, onlyRules(validateDataset(dataset, TEST_HIERARCHY), []), orthography);
+
+    expect(manifest.tasks).toHaveLength(1);
+    expect(manifest.tasks[0].alerts[0].suggestion).toMatchObject({
+      value: 'PRODUCTO MARCA AZUL',
+      method: 'orthography-frequency',
+      confidence: 'medium',
+      autoApplicable: false,
     });
   });
 

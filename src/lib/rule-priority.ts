@@ -17,8 +17,8 @@ export interface RulePriority extends RuleMetricRecord {
 
 export const ORTHOGRAPHY_RULE: RuleDefinition = {
   id: 'ORT-01',
-  name: 'Ortografía y espacios',
-  description: 'Posibles errores ortográficos o espacios inconsistentes detectados en la descripción.',
+  name: 'Ortografía contextual y espacios',
+  description: 'Compara descripciones raras con referencias frecuentes y separa correcciones confiables de palabras que requieren revisión manual.',
   status: 'Adicional',
 };
 

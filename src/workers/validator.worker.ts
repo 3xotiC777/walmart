@@ -31,7 +31,9 @@ function orthographyAlertRecord(alert: OrthographyAlert, invoiceUrls: string[]):
     field: 'Descripcion',
     observed: alert.fields.Descripcion,
     expected: alert.correctedDescription,
-    detail: `${alert.reason}. Posible corrección: "${alert.correctedDescription}" (${alert.probability}).`,
+    detail: alert.confidence === 'none'
+      ? `${alert.reason}. ${alert.detail}`
+      : `${alert.reason}. ${alert.detail} Posible corrección: "${alert.correctedDescription}" (${alert.probability}, confianza ${alert.confidence}).`,
     invoiceUrls,
   };
 }

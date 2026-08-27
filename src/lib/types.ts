@@ -35,6 +35,10 @@ export interface OrthographyAlert {
   reason: string;
   probability: string;
   correctedDescription: string;
+  detail: string;
+  confidence: 'high' | 'medium' | 'none';
+  method: 'spacing' | 'frequent-phrase' | 'unrecognized-token' | 'learned-decision';
+  doubtfulTokens: string[];
 }
 
 export interface HierarchyEntry {
@@ -64,9 +68,9 @@ export interface RuleDefinition {
 
 export const ORTHOGRAPHY_RULE = {
   id: 'ORT-01',
-  name: 'Ortografía y espacios',
+  name: 'Ortografía contextual y espacios',
   status: 'Adicional',
-  description: 'Detecta posibles errores de texto y espacios sobrantes en la descripción.',
+  description: 'Compara descripciones poco frecuentes con referencias recurrentes, protege números, tallas y términos opuestos, y señala palabras no reconocidas para revisión manual.',
 } as const satisfies RuleDefinition;
 
 export interface AlertRecord {

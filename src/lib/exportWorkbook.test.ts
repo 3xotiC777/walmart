@@ -11,6 +11,7 @@ describe('Excel de salida', () => {
       { codiGo_barras: '00123', Descripcion: 'PRODUCTO MARCA' },
       { codiGo_barras: '00123', Descripcion: ' PRODUCTO MARCA ' },
       { codiGo_barras: '00123', Descripcion: 'PRODUCTO MARCAA' },
+      { codiGo_barras: '00123', Descripcion: 'PRODUCTO MARCA' },
     ]);
     const validation = validateDataset(dataset, TEST_HIERARCHY, {
       sourceFile: 'facturas.xlsx',
@@ -27,14 +28,14 @@ describe('Excel de salida', () => {
     const summary = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumen, { header: 1 });
     expect(summary.find((row) => row[0] === 'Alertas ortográficas')?.[1]).toBe(2);
     expect(summary[12]).toEqual(['Regla', 'Nombre', 'Estado', 'Registros afectados', 'Alertas', 'Descripción']);
-    expect(summary.find((row) => row[0] === 'R01')?.slice(3, 5)).toEqual([3, 1]);
+    expect(summary.find((row) => row[0] === 'R01')?.slice(3, 5)).toEqual([4, 1]);
     expect(String(summary.find((row) => row[0] === 'EST-02')?.[5])).toContain('Precio_Total_Preciador');
     expect(String(summary.find((row) => row[0] === 'JER-01')?.[5])).toContain('columna Producto');
     expect(summary.some((row) => row[0] === 'R28')).toBe(true);
     expect(summary.some((row) => row[0] === 'R29')).toBe(true);
     expect(summary.some((row) => row[0] === 'R30')).toBe(true);
     expect(summary.find((row) => row[0] === 'ORT-01')?.slice(1, 5)).toEqual([
-      'Ortografía y espacios',
+      'Ortografía contextual y espacios',
       'Adicional',
       2,
       2,
@@ -55,6 +56,8 @@ describe('Excel de salida', () => {
       Descripcion: 'PRODUCTO MARCAA',
       'Motivo de Alerta': 'Texto/Ortografía',
       'Descripcion correcta': 'PRODUCTO MARCA',
+      Confianza: 'high',
+      'Método': 'frequent-phrase',
     });
     const reviewed = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Registros_a_revisar);
     expect(reviewed).toHaveLength(1);

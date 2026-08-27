@@ -18,6 +18,10 @@ export type CollaborationSuggestionMethod =
   | 'normal-price-median'
   | 'calculated-total'
   | 'unique-reference'
+  | 'orthography-frequency'
+  | 'orthography-learning'
+  | 'orthography-spacing'
+  | 'orthography-unrecognized-token'
   | 'manual-review';
 
 export interface CollaborationAlternative {
@@ -279,7 +283,7 @@ function normalizeAlertInput(
   const record = recordsByRow.get(alert.sourceRow);
   const source: AlertRecord = {
     ruleId: 'ORT-01',
-    ruleName: 'Ortografía y espacios',
+    ruleName: 'Ortografía contextual y espacios',
     sourceRow: alert.sourceRow,
     rowId: alert.rowId,
     surveyId: alert.surveyId,
@@ -289,7 +293,9 @@ function normalizeAlertInput(
     field: 'Descripcion',
     observed: displayValue(record?.fields.Descripcion ?? alert.fields.Descripcion),
     expected: alert.correctedDescription,
-    detail: `${alert.reason}. Posible corrección: "${alert.correctedDescription}" (${alert.probability}).`,
+    detail: alert.confidence === 'none'
+      ? `${alert.reason}. ${alert.detail}`
+      : `${alert.reason}. ${alert.detail} Posible corrección: "${alert.correctedDescription}" (${alert.probability}, confianza ${alert.confidence}).`,
   };
   return {
     id: `alert-ORT-01-${alert.sourceRow}`,
@@ -622,6 +628,16 @@ function buildSuggestion(
         .filter((record) => normalizeText(record.fields.Descripcion) === normalizeText(reference))
         .map((record) => record.excelRow),
     }));
+    if (alert.source.ruleId === 'ORT-01' && alert.orthography?.confidence === 'none') {
+      return manualSuggestion(
+        dataset,
+        descriptor,
+        alert,
+        alternatives,
+        'orthography-unrecognized-token',
+        alert.orthography.detail,
+      );
+    }
     if (references.length !== 1) {
       return manualSuggestion(
         dataset,
@@ -633,18 +649,38 @@ function buildSuggestion(
       );
     }
     const reference = references[0];
+    const confidence = alert.source.ruleId === 'ORT-01'
+      ? alert.orthography?.confidence ?? 'none'
+      : 'high';
+    const orthographyMethods: Record<OrthographyAlert['method'], CollaborationSuggestionMethod> = {
+      'frequent-phrase': 'orthography-frequency',
+      'learned-decision': 'orthography-learning',
+      spacing: 'orthography-spacing',
+      'unrecognized-token': 'orthography-unrecognized-token',
+    };
     return {
       targetField: 'Descripcion',
       targetColumnIndex: targetColumnIndex(dataset, 'Descripcion'),
       value: reference,
-      method: 'unique-reference',
-      confidence: 'high',
+      method: alert.source.ruleId === 'ORT-01' && alert.orthography
+        ? orthographyMethods[alert.orthography.method]
+        : 'unique-reference',
+      confidence,
       alternatives,
-      autoApplicable: normalizeText(reference) !== normalizeText(alert.source.observed),
+      autoApplicable: confidence === 'high' && reference !== alert.source.observed,
       evidence: {
-        summary: `Se encontró una única descripción de referencia: "${reference}".`,
+        summary: alert.source.ruleId === 'ORT-01' && alert.orthography
+          ? `${alert.orthography.detail} Confianza ${confidence}; similitud ${alert.orthography.probability}.`
+          : `Se encontró una única descripción de referencia: "${reference}".`,
         groupSize: descriptor.sourceRows.length,
         sourceRows: descriptor.sourceRows,
+        inputs: alert.source.ruleId === 'ORT-01' && alert.orthography
+          ? {
+              motivo: alert.orthography.reason,
+              metodo: alert.orthography.method,
+              palabras_dudosas: alert.orthography.doubtfulTokens.join(', ') || null,
+            }
+          : undefined,
       },
     };
   }

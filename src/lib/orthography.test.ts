@@ -12,6 +12,7 @@ describe('alertas de ortografía y espacios', () => {
     const dataset = makeDataset([
       { Descripcion: 'PRODUCTO MARCA' },
       { Descripcion: 'PRODUCTO MARCA' },
+      { Descripcion: 'PRODUCTO MARCA' },
       { Descripcion: 'PRODUCTO MARCAA' },
     ]);
 
@@ -19,18 +20,21 @@ describe('alertas de ortografía y espacios', () => {
 
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toMatchObject({
-      sourceRow: 4,
-      rowId: 'ROW-3',
-      surveyId: 'ID-3',
+      sourceRow: 5,
+      rowId: 'ROW-4',
+      surveyId: 'ID-4',
       barcode: '001',
       reason: 'Texto/Ortografía',
       correctedDescription: 'PRODUCTO MARCA',
+      confidence: 'high',
+      method: 'frequent-phrase',
     });
     expect(alerts[0].probability).toMatch(/^9\d\.\d%$/);
   });
 
   it('clasifica espacios y ortografía conjuntamente', () => {
     const dataset = makeDataset([
+      { Descripcion: 'PRODUCTO MARCA' },
       { Descripcion: 'PRODUCTO MARCA' },
       { Descripcion: 'PRODUCTO MARCA' },
       { Descripcion: '  PRODUCTO  MARCAA  ' },
@@ -48,6 +52,7 @@ describe('alertas de ortografía y espacios', () => {
     const dataset = makeDataset([
       { Descripcion: 'PRODUCTO 100 GR' },
       { Descripcion: 'PRODUCTO 100 GR' },
+      { Descripcion: 'PRODUCTO 100 GR' },
       { Descripcion: 'PRODUCTO 200 GR' },
     ]);
 
@@ -55,12 +60,86 @@ describe('alertas de ortografía y espacios', () => {
   });
 
   it('reporta espacios aunque no exista una corrección ortográfica', () => {
-    const dataset = makeDataset([{ Descripcion: ' PRODUCTO ÚNICO ' }]);
+    const dataset = makeDataset([{ Producto_Wm: 'PRODUCTO ÚNICO', Descripcion: ' PRODUCTO ÚNICO ' }]);
 
     expect(generateOrthographyAlerts(dataset)[0]).toMatchObject({
       reason: 'Espacios de más',
       probability: '100%',
-      correctedDescription: 'PRODUCTO UNICO',
+      correctedDescription: 'PRODUCTO ÚNICO',
+      confidence: 'high',
+      method: 'spacing',
     });
+  });
+
+  it('no confunde palabras con significado opuesto', () => {
+    const dataset = makeDataset([
+      { Descripcion: 'PRODUCTO CON AZUCAR' },
+      { Descripcion: 'PRODUCTO CON AZUCAR' },
+      { Descripcion: 'PRODUCTO CON AZUCAR' },
+      { Descripcion: 'PRODUCTO SIN AZUCAR' },
+    ]);
+
+    expect(generateOrthographyAlerts(dataset)).toEqual([]);
+  });
+
+  it('protege tallas y medidas aunque las frases sean muy parecidas', () => {
+    const dataset = makeDataset([
+      { Descripcion: 'CAMISA M MARCA' },
+      { Descripcion: 'CAMISA M MARCA' },
+      { Descripcion: 'CAMISA M MARCA' },
+      { Descripcion: 'CAMISA S MARCA' },
+      { Descripcion: 'PRODUCTO MARCA 500GR' },
+      { Descripcion: 'PRODUCTO MARCA 500GR' },
+      { Descripcion: 'PRODUCTO MARCA 500GR' },
+      { Descripcion: 'PRODUCTO MARCA 500G' },
+    ]);
+
+    expect(generateOrthographyAlerts(dataset)).toEqual([]);
+  });
+
+  it('no aplica como automática una referencia de otro contexto de producto', () => {
+    const dataset = makeDataset([
+      { Producto_Wm: 'PRODUCTO A', Descripcion: 'PRODUCTO MARCA' },
+      { Producto_Wm: 'PRODUCTO A', Descripcion: 'PRODUCTO MARCA' },
+      { Producto_Wm: 'PRODUCTO A', Descripcion: 'PRODUCTO MARCA' },
+      { Producto_Wm: 'PRODUCTO B', Descripcion: 'PRODUCTO MARCAA' },
+    ]);
+
+    expect(generateOrthographyAlerts(dataset)).toEqual([
+      expect.objectContaining({
+        correctedDescription: 'PRODUCTO MARCAA',
+        confidence: 'none',
+        method: 'unrecognized-token',
+        doubtfulTokens: ['MARCAA'],
+      }),
+    ]);
+  });
+
+  it('respeta decisiones aprendidas válidas y correcciones aprobadas', () => {
+    const dataset = makeDataset([
+      { Descripcion: 'HELADO DOS PINOS VETEADO CHOCOLATE' },
+      { Descripcion: 'CAMINO DE MESA CAFE CIRC' },
+    ]);
+
+    expect(generateOrthographyAlerts(dataset)).toEqual([
+      expect.objectContaining({
+        correctedDescription: 'CAMINO DE MESA CAFE CIRCULAR',
+        confidence: 'high',
+        method: 'learned-decision',
+      }),
+    ]);
+  });
+
+  it('señala palabras raras sin inventar una corrección', () => {
+    const dataset = makeDataset([{ Descripcion: 'PRODUCTO XILOFONZ MARCA' }]);
+
+    expect(generateOrthographyAlerts(dataset)).toEqual([
+      expect.objectContaining({
+        correctedDescription: 'PRODUCTO XILOFONZ MARCA',
+        confidence: 'none',
+        method: 'unrecognized-token',
+        doubtfulTokens: ['XILOFONZ'],
+      }),
+    ]);
   });
 });

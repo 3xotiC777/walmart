@@ -34,7 +34,7 @@ describe('buildRulePriorities', () => {
       },
     ], definitions);
 
-    expect(result.active[0]).toMatchObject({ rule_code: 'ORT-01', name: 'Ortografía y espacios' });
+    expect(result.active[0]).toMatchObject({ rule_code: 'ORT-01', name: 'Ortografía contextual y espacios' });
     expect(result.inactive.map((rule) => rule.id)).toEqual(['R01', 'R30']);
   });
 });
