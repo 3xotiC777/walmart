@@ -362,7 +362,7 @@ function analyzePhrase(
   return {
     correctedDescription: phrase,
     reason: 'Texto aparece pocas veces; validar',
-    probability: '100%',
+    probability: 'No aplica',
     detail: `Palabras no reconocidas en productos, marcas, categorías o descripciones recurrentes: ${doubtfulTokens.map((token) => `"${token}"`).join(', ')}.`,
     confidence: 'none',
     method: 'unrecognized-token',

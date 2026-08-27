@@ -136,6 +136,7 @@ describe('alertas de ortografía y espacios', () => {
     expect(generateOrthographyAlerts(dataset)).toEqual([
       expect.objectContaining({
         correctedDescription: 'PRODUCTO XILOFONZ MARCA',
+        probability: 'No aplica',
         confidence: 'none',
         method: 'unrecognized-token',
         doubtfulTokens: ['XILOFONZ'],
