@@ -208,7 +208,7 @@ export function TaskReview({
                 </button>
               )}
               {isExpanded && alert.group_id && (
-                <div id={relatedId}>
+                <div className="submenu-reveal" id={relatedId}>
                   <RelatedRecords
                     blockId={blockId}
                     blockVersion={blockVersion}

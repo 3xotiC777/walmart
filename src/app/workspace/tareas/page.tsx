@@ -172,7 +172,7 @@ export default async function TasksPage({
                 <td className="row-main"><strong>{task.description || 'Sin descripción'}</strong><small>Id_Dn W: {task.id_dn_w || '—'}</small></td>
                 <td>{taskAlerts(task.validation_alerts).map((alert) => <span className="rule-badge" key={alert.id}>{alert.rule_code}</span>)}</td>
                 <td><span className={`status ${task.status === 'resolved' ? 'resolved' : 'pending'}`}>{STATUS_LABELS[task.status]}</span></td>
-                <td><Link className="review-link" href={`/workspace/tareas/${task.id}`} prefetch={false}>Revisar →</Link></td>
+                <td><Link className="review-link" href={`/workspace/tareas/${task.id}`} prefetch={false} transitionTypes={['workspace-detail']}>Revisar <span aria-hidden="true">→</span></Link></td>
               </tr>)}
               {rows.length === 0 && <tr><td colSpan={6}>No hay tareas que coincidan con los filtros.</td></tr>}
             </tbody>

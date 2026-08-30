@@ -2,6 +2,7 @@
 
 import Link, { useLinkStatus } from 'next/link';
 import { usePathname } from 'next/navigation';
+import { ViewTransition } from 'react';
 import {
   FileIcon,
   GridIcon,
@@ -48,12 +49,19 @@ export function WorkspaceNavigation({ leader }: { leader: boolean }) {
         return (
           <Link
             aria-current={active ? 'page' : undefined}
+            aria-label={label}
             className={active ? 'is-active' : ''}
             href={href}
             key={href}
             prefetch={false}
+            transitionTypes={['workspace-tab']}
           >
-            <span className="nav-link-content"><Icon /><span>{label}</span></span>
+            {active && (
+              <ViewTransition default="none" name="workspace-active-navigation" share="workspace-nav-marker">
+                <span aria-hidden="true" className="nav-active-surface" />
+              </ViewTransition>
+            )}
+            <span className="nav-link-content"><Icon /><span className="rail-label">{label}</span></span>
             <span aria-hidden="true" className="nav-tooltip">{label}</span>
             <NavigationActivity />
           </Link>
@@ -76,7 +84,9 @@ export function CurrentWorkspaceSection({ leader, workspaceName }: { leader: boo
   return (
     <div className="workspace-location">
       <small>{workspaceName}</small>
-      <strong><span aria-hidden="true" />{section}</strong>
+      <ViewTransition default="none" key={pathname} name="workspace-location" share="workspace-location-motion">
+        <strong><span aria-hidden="true" />{section}</strong>
+      </ViewTransition>
     </div>
   );
 }

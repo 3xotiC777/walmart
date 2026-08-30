@@ -190,7 +190,7 @@ export function RelatedRecords({
               <td>
                 <div className="related-actions">
                   {item.task_id
-                    ? <Link className="review-link" href={`/workspace/tareas/${item.task_id}`} prefetch={false}>Abrir registro →</Link>
+                    ? <Link className="review-link" href={`/workspace/tareas/${item.task_id}`} prefetch={false} transitionTypes={['workspace-detail']}>Abrir registro <span aria-hidden="true">→</span></Link>
                     : item.is_alert
                       ? <span className="status draft">Otro bloque · solo lectura</span>
                       : <button className="button button-secondary" disabled={busy === `row-${item.id}`} onClick={() => void addRelated(item.id)} type="button">Añadir a mi bloque</button>}
