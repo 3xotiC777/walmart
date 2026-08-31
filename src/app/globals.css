@@ -93,17 +93,19 @@ button { cursor: pointer; }
 .workspace-shell { min-height: 100vh; display: grid; grid-template-columns: var(--rail-collapsed) minmax(0, 1fr); }
 .side-rail { position: sticky; top: 0; z-index: 20; display: flex; width: var(--rail-collapsed); overflow: hidden; flex-direction: column; height: 100vh; padding: 22px 14px; color: #eaf3ff; background: #082f68; border-right: 1px solid rgba(255,255,255,.07); transition: width .32s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease; }
 .side-rail:hover, .side-rail:focus-within { width: var(--rail-expanded); box-shadow: 18px 0 44px rgba(4,31,71,.22); }
-.workspace-brand { display: flex; width: calc(var(--rail-expanded) - 28px); align-items: center; gap: 11px; margin: 0 7px 38px; color: #fff; text-decoration: none; }
+.workspace-brand { display: flex; width: calc(var(--rail-collapsed) - 28px); align-items: center; gap: 11px; margin: 0 7px 38px; color: #fff; text-decoration: none; }
 .workspace-brand > span { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; color: var(--ink); background: var(--yellow); border-radius: 12px; font-size: 12px; font-weight: 950; letter-spacing: -.04em; }
 .workspace-brand strong { font-size: 13px; line-height: 1.18; }
 .side-rail nav { display: grid; gap: 5px; }
-.side-rail nav a, .rail-logout { display: flex; width: calc(var(--rail-expanded) - 28px); align-items: center; gap: 11px; min-height: 43px; padding: 10px 12px; color: #c8daee; background: transparent; border: 0; border-radius: 9px; text-decoration: none; font-size: 12px; font-weight: 760; text-align: left; }
+.side-rail nav a, .rail-logout { display: flex; width: calc(var(--rail-collapsed) - 28px); align-items: center; gap: 11px; min-height: 43px; padding: 10px 12px; color: #c8daee; background: transparent; border: 0; border-radius: 9px; text-decoration: none; font-size: 12px; font-weight: 760; text-align: left; }
 .side-rail nav a:hover, .side-rail nav a:focus-visible, .rail-logout:hover { color: #fff; background: rgba(255,255,255,.09); }
 .side-rail nav svg, .rail-logout svg { width: 18px; }
 .side-rail form { margin-top: auto; }
 .rail-label { opacity: 0; white-space: nowrap; transform: translateX(-7px); transition: opacity .17s ease, transform .24s cubic-bezier(.2,.8,.2,1); }
 .side-rail:hover .rail-label, .side-rail:focus-within .rail-label { opacity: 1; transform: translateX(0); transition-delay: 70ms; }
-.rail-logout { width: calc(var(--rail-expanded) - 28px); }
+.side-rail:hover .workspace-brand, .side-rail:focus-within .workspace-brand,
+.side-rail:hover nav a, .side-rail:focus-within nav a,
+.side-rail:hover .rail-logout, .side-rail:focus-within .rail-logout { width: calc(var(--rail-expanded) - 28px); }
 .rail-reveal-hint { position: absolute; top: 50%; right: 0; display: grid; width: 12px; height: 34px; place-items: center; color: var(--ink); background: var(--yellow); border-radius: 8px 0 0 8px; box-shadow: 0 7px 18px rgba(0,18,48,.22); font-size: 17px; font-weight: 900; transform: translateY(-50%); transition: opacity .2s ease, transform .3s cubic-bezier(.2,.8,.2,1); }
 .side-rail:hover .rail-reveal-hint, .side-rail:focus-within .rail-reveal-hint { opacity: .72; transform: translateY(-50%) rotate(180deg); }
 .workspace-body { min-width: 0; }
@@ -543,12 +545,13 @@ html { scroll-behavior: smooth; scroll-padding-top: 92px; }
   background-size: 180% 100%;
   animation: rail-signal 5s linear infinite;
 }
-.workspace-brand, .workspace-brand span, .workspace-brand strong { transition: transform .22s ease, box-shadow .22s ease, color .22s ease; }
+.workspace-brand { transition: width .32s cubic-bezier(.2,.8,.2,1), transform .22s ease, color .22s ease; }
+.workspace-brand span, .workspace-brand strong { transition: transform .22s ease, box-shadow .22s ease, color .22s ease; }
 .workspace-brand:hover { color: var(--yellow); }
 .workspace-brand:hover span { transform: rotate(-4deg) scale(1.06); box-shadow: 0 10px 24px rgba(255,202,46,.3); }
 .workspace-brand:hover strong { transform: translateX(2px); }
 
-.side-rail nav a, .rail-logout { position: relative; overflow: visible; transition: color .18s ease, background-color .18s ease, transform .18s ease, box-shadow .18s ease; }
+.side-rail nav a, .rail-logout { position: relative; overflow: visible; transition: width .32s cubic-bezier(.2,.8,.2,1), color .18s ease, background-color .18s ease, transform .18s ease, box-shadow .18s ease; }
 .side-rail nav a::before {
   content: "";
   position: absolute;
