@@ -12,7 +12,7 @@ const ROUTE_MOTION = {
 
 export function WorkspaceRouteTransition({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [supportsNativeMotion, setSupportsNativeMotion] = useState(true);
+  const [supportsNativeMotion, setSupportsNativeMotion] = useState(false);
 
   useEffect(() => {
     setSupportsNativeMotion('startViewTransition' in document);
