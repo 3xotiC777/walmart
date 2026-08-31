@@ -1,6 +1,6 @@
 'use client';
 
-import { ViewTransition, type ReactNode } from 'react';
+import { useEffect, useState, ViewTransition, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 
 const ROUTE_MOTION = {
@@ -12,6 +12,11 @@ const ROUTE_MOTION = {
 
 export function WorkspaceRouteTransition({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [supportsNativeMotion, setSupportsNativeMotion] = useState(true);
+
+  useEffect(() => {
+    setSupportsNativeMotion('startViewTransition' in document);
+  }, []);
 
   return (
     <ViewTransition
@@ -22,7 +27,7 @@ export function WorkspaceRouteTransition({ children }: { children: ReactNode }) 
       name="workspace-route"
       share={ROUTE_MOTION}
     >
-      <div className="workspace-route-frame">{children}</div>
+      <div className={`workspace-route-frame${supportsNativeMotion ? '' : ' use-fallback-motion'}`}>{children}</div>
     </ViewTransition>
   );
 }

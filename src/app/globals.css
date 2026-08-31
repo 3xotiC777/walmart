@@ -616,6 +616,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 92px; }
 .viewer-chip:hover > span { transform: rotate(5deg) scale(1.05); box-shadow: 0 7px 16px rgba(9,102,217,.16); }
 
 .workspace-route-frame { min-width: 0; }
+.workspace-route-frame.use-fallback-motion { animation: page-arrival .34s cubic-bezier(.2,.75,.2,1) both; }
 .page-heading h1 { transition: letter-spacing .25s ease, transform .25s ease; }
 .page-heading:hover h1 { letter-spacing: -.042em; transform: translateX(2px); }
 .page-heading .overline::before { content: ""; display: inline-block; width: 18px; height: 2px; margin-right: 8px; vertical-align: 3px; background: var(--yellow); border-radius: 99px; transform-origin: left; transition: width .22s ease; }
