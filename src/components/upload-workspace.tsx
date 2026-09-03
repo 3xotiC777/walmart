@@ -6,6 +6,7 @@ import { CheckIcon, UploadCloudIcon } from './icons';
 import { buildIngestionPlan } from '@/lib/ingestion';
 import { runIngestionBatches } from '@/lib/ingestion-runner';
 import { FileSnapshotError, resumableUpload, snapshotUploadFile, type UploadFileSnapshot } from '@/lib/storage-upload';
+import { safeExternalErrorMessage } from '@/lib/database-error';
 import type { WorkerMessage, WorkerRequest, WorkerResult } from '@/lib/types';
 
 type Phase = 'select' | 'validating' | 'uploading' | 'saving' | 'done' | 'error';
@@ -62,7 +63,7 @@ class ApiRequestError extends Error {
   }
 }
 
-async function postJson<T = Record<string, unknown>>(url: string, body: unknown, attempts = 3, signal?: AbortSignal): Promise<T> {
+async function postJson<T = Record<string, unknown>>(url: string, body: unknown, attempts = 5, signal?: AbortSignal): Promise<T> {
   let lastError = new Error('No fue posible guardar el avance.');
   let lastRetryable = false;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -78,7 +79,7 @@ async function postJson<T = Record<string, unknown>>(url: string, body: unknown,
       const fallback = response.status === 413
         ? 'La plataforma rechazó un lote por su tamaño. Actualiza la página e inténtalo nuevamente; el archivo original permanece intacto.'
         : `No fue posible guardar el avance (HTTP ${response.status}).`;
-      lastError = new Error(result.message ?? fallback);
+      lastError = new Error(safeExternalErrorMessage(result.message, fallback));
       lastRetryable = Boolean(result.retryable) || response.status >= 500 || response.status === 429;
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
@@ -86,7 +87,10 @@ async function postJson<T = Record<string, unknown>>(url: string, body: unknown,
       lastRetryable = true;
     }
     if (!lastRetryable) break;
-    if (attempt + 1 < attempts) await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
+    if (attempt + 1 < attempts) {
+      const delay = Math.min(6_000, 750 * (2 ** attempt));
+      await new Promise((resolve) => window.setTimeout(resolve, delay));
+    }
   }
   throw new ApiRequestError(lastError.message, lastRetryable);
 }
@@ -155,7 +159,7 @@ export function UploadWorkspace() {
         panelSize: panelSnapshot.file.size, invoiceSize: invoiceSnapshot.file.size,
         headers: result.dataset.headers,
         hasBarcode: effectiveHasBarcode,
-      }, 3, signal);
+      }, 5, signal);
       uploadId = created.uploadId;
 
       setPhase('uploading');
@@ -171,7 +175,7 @@ export function UploadWorkspace() {
       setMessage(`Guardando por etapas · 0 de ${plan.batches.length}…`);
       await runIngestionBatches(
         plan.batches,
-        (item) => postJson(`/api/uploads/${uploadId}/ingest`, { batchKey: item.key, payload: item.payload }, 3, signal).then(() => undefined),
+        (item) => postJson(`/api/uploads/${uploadId}/ingest`, { batchKey: item.key, payload: item.payload }, 5, signal).then(() => undefined),
         (completed, total) => {
           setMessage(`Guardando por etapas · ${completed} de ${total}…`);
           setProgress(60 + (completed / total) * 35);
@@ -185,7 +189,7 @@ export function UploadWorkspace() {
         alertCount: plan.alertCount,
         batchCount: plan.batches.length,
         manifestHash: plan.manifestHash,
-      }, 3, signal);
+      }, 5, signal);
       setProgress(100); setPhase('done'); setMessage('Jornada lista para repartir.');
       router.push(`/workspace/reparto/${uploadId}`); router.refresh();
     } catch (cause) {

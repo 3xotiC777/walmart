@@ -23,8 +23,9 @@ export interface IngestionPlan {
 }
 
 // Vercel rechaza cuerpos mayores a 4,5 MB. Mantener cada lote por debajo de
-// 2 MB deja margen para encabezados y cambios futuros en la estructura.
-export const MAX_INGESTION_REQUEST_BYTES = 2_000_000;
+// 3,25 MB conserva más de 1 MB de margen y reduce viajes de red sin acercarse
+// al límite de la plataforma.
+export const MAX_INGESTION_REQUEST_BYTES = 3_250_000;
 const BATCH_KEY_PLACEHOLDER = '00000000-0000-4000-8000-000000000000';
 const textEncoder = new TextEncoder();
 
@@ -254,13 +255,13 @@ export async function buildIngestionPlan(
   const invoiceLinks = [...invoiceLinksByIdentity.values()];
 
   const batches: IngestionBatch[] = [
-    ...packIngestionBatches('rows', rows, 800),
-    ...packIngestionBatches('groups', groups, 500),
-    ...packIngestionBatches('group_members', groupMembers, 1_500),
-    ...packIngestionBatches('blocks', blocks, 500),
-    ...packIngestionBatches('tasks', tasks, 800),
-    ...packIngestionBatches('alerts', alerts, 800),
-    ...packIngestionBatches('invoices', invoiceLinks, 800),
+    ...packIngestionBatches('rows', rows, 1_000),
+    ...packIngestionBatches('groups', groups, 1_000),
+    ...packIngestionBatches('group_members', groupMembers, 2_000),
+    ...packIngestionBatches('blocks', blocks, 1_000),
+    ...packIngestionBatches('tasks', tasks, 1_000),
+    ...packIngestionBatches('alerts', alerts, 1_200),
+    ...packIngestionBatches('invoices', invoiceLinks, 1_000),
   ];
   // El hash solo necesita representar de manera estable el manifiesto que se
   // guardó. Evitar serializar nuevamente las sugerencias y todos sus miembros

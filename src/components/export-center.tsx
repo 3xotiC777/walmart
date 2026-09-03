@@ -9,6 +9,7 @@ import type { WorkbookCellCorrection, WorkbookSuggestion } from '@/lib/workbookE
 import type { HierarchyCatalog } from '@/lib/types';
 import { buildCorrectionTraceabilityValues, CORRECTION_TRACEABILITY_HEADER } from '@/lib/correction-attribution';
 import type { ExportAuditKind } from '@/lib/export-audit';
+import { classifyDatabaseError, safeExternalErrorMessage, type DatabaseErrorLike } from '@/lib/database-error';
 
 interface UploadInfo { id: string; display_name: string; panel_object_path: string; has_barcode: boolean; total_rows: number; task_count: number; alert_count: number; orthography_count: number; pending_task_count: number; corrected_cell_count: number; confirmed_correct_count: number; created_at: string }
 interface PreflightSummary {
@@ -22,6 +23,32 @@ interface PreflightSummary {
 }
 
 const PREFLIGHT_ALERT_PREVIEW = 25;
+const EXPORT_PAGE_SIZE = 500;
+
+async function waitBeforeRetry(attempt: number) {
+  await new Promise((resolve) => window.setTimeout(resolve, Math.min(6_000, 750 * (2 ** attempt))));
+}
+
+async function retrySupabaseQuery<T>(
+  operation: () => PromiseLike<{ data: T | null; error: DatabaseErrorLike | null }>,
+  fallback: string,
+  attempts = 5,
+): Promise<T> {
+  let lastError = new Error(fallback);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const { data, error } = await operation();
+      if (!error) return data as T;
+      const classification = classifyDatabaseError(error);
+      lastError = new Error(safeExternalErrorMessage(classification.message, fallback));
+      if (!classification.retryable) break;
+    } catch (cause) {
+      lastError = new Error(safeExternalErrorMessage(cause instanceof Error ? cause.message : null, fallback));
+    }
+    if (attempt + 1 < attempts) await waitBeforeRetry(attempt);
+  }
+  throw lastError;
+}
 
 function save(buffer: ArrayBuffer, filename: string) {
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -33,13 +60,14 @@ async function fetchAll(table: string, select: string, uploadId?: string, orderK
   const rows: any[] = [];
   let cursor: string | number | null = null;
   for (;;) {
-    let query = supabase.from(table).select(select).order(orderKey, { ascending: true }).limit(1_000);
-    if (uploadId) query = query.eq('upload_id', uploadId);
-    if (cursor !== null) query = query.gt(orderKey, cursor);
-    const { data, error } = await query;
-    if (error) throw error;
+    const data = await retrySupabaseQuery<any[]>(() => {
+      let query = supabase.from(table).select(select).order(orderKey, { ascending: true }).limit(EXPORT_PAGE_SIZE);
+      if (uploadId) query = query.eq('upload_id', uploadId);
+      if (cursor !== null) query = query.gt(orderKey, cursor);
+      return query;
+    }, `No fue posible cargar ${table} para preparar el Excel.`);
     rows.push(...(data ?? []));
-    if (!data || data.length < 1_000) break;
+    if (!data || data.length < EXPORT_PAGE_SIZE) break;
     const nextCursor = (data[data.length - 1] as unknown as Record<string, unknown> | undefined)?.[orderKey];
     if (typeof nextCursor !== 'string' && typeof nextCursor !== 'number') throw new Error(`No fue posible paginar ${table} de forma estable.`);
     cursor = nextCursor;
@@ -88,19 +116,38 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
 
   async function original(): Promise<ArrayBuffer> {
     const supabase = createBrowserSupabaseClient();
-    const { data, error: signedError } = await supabase.storage.from('pqm-private').createSignedUrl(upload.panel_object_path, 600);
-    if (signedError || !data?.signedUrl) throw signedError ?? new Error('No fue posible autorizar la descarga del panel.');
-    const response = await fetch(data.signedUrl);
-    if (!response.ok) throw new Error('No fue posible recuperar el panel original.');
-    return response.arrayBuffer();
+    const data = await retrySupabaseQuery<{ signedUrl: string }>(
+      () => supabase.storage.from('pqm-private').createSignedUrl(upload.panel_object_path, 600),
+      'No fue posible autorizar la descarga del panel.',
+    );
+    if (!data?.signedUrl) throw new Error('No fue posible autorizar la descarga del panel.');
+    let lastError = new Error('No fue posible recuperar el panel original.');
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        const response = await fetch(data.signedUrl);
+        if (response.ok) return response.arrayBuffer();
+        lastError = new Error(`No fue posible recuperar el panel original (HTTP ${response.status}).`);
+        if (response.status < 500 && response.status !== 429) break;
+      } catch {
+        lastError = new Error('Se interrumpió la descarga del panel original.');
+      }
+      if (attempt < 4) await waitBeforeRetry(attempt);
+    }
+    throw lastError;
   }
 
   async function loadData(includeReportContext: boolean) {
     const supabase = createBrowserSupabaseClient();
     const snapshot = async () => {
-      const { data, error: snapshotError } = await supabase.from('uploads').select('version, pending_task_count, corrected_cell_count, confirmed_correct_count').eq('id', upload.id).single();
-      if (snapshotError) throw snapshotError;
-      return data;
+      return retrySupabaseQuery<{
+        version: number;
+        pending_task_count: number;
+        corrected_cell_count: number;
+        confirmed_correct_count: number;
+      }>(
+        () => supabase.from('uploads').select('version, pending_task_count, corrected_cell_count, confirmed_correct_count').eq('id', upload.id).single(),
+        'No fue posible comprobar el estado de la jornada.',
+      );
     };
     const before = await snapshot();
     const [tasks, alerts, decisions, profiles, resolutions, invoices, conflictGroups] = await Promise.all([
@@ -119,12 +166,10 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
 
   async function assertSnapshotVersion(expectedVersion: number) {
     const supabase = createBrowserSupabaseClient();
-    const { data, error: snapshotError } = await supabase
-      .from('uploads')
-      .select('version')
-      .eq('id', upload.id)
-      .single();
-    if (snapshotError) throw snapshotError;
+    const data = await retrySupabaseQuery<{ version: number }>(
+      () => supabase.from('uploads').select('version').eq('id', upload.id).single(),
+      'No fue posible confirmar la versión de la jornada.',
+    );
     if (Number(data.version) !== Number(expectedVersion)) {
       throw new Error('La jornada cambió durante la revalidación. Intenta descargar nuevamente para incluir las decisiones más recientes.');
     }
@@ -174,22 +219,32 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
       const currentUpload = { ...upload, ...data.snapshot };
       const dataset = parseWorkbook(originalBuffer.slice(0), upload.display_name);
       validateOverlay(dataset, data.resolutions);
-      const revalidation = await revalidateExportOverlay({
-        dataset,
-        resolutions: data.resolutions,
-        alerts: data.alerts,
-        decisions: data.decisions,
-        hierarchy,
-        hasBarcode: upload.has_barcode,
-      });
+      const revalidation = kind === 'report'
+        ? {
+            remainingAlerts: [] as RevalidatedExportAlert[],
+            invalidConfirmedCorrect: [] as RevalidatedExportAlert[],
+            validationAlertCount: data.alerts.filter((alert) => alert.category !== 'orthography').length,
+            orthographyAlertCount: data.alerts.filter((alert) => alert.category === 'orthography').length,
+            safeForFinal: Number(data.snapshot.pending_task_count) === 0,
+          }
+        : await revalidateExportOverlay({
+            dataset,
+            resolutions: data.resolutions,
+            alerts: data.alerts,
+            decisions: data.decisions,
+            hierarchy,
+            hasBarcode: upload.has_barcode,
+          });
       const requiresDraft = Number(data.snapshot.pending_task_count) > 0 || !revalidation.safeForFinal;
       const preflightSummary: PreflightSummary = {
         pendingTasks: Number(data.snapshot.pending_task_count),
-        remainingAlertCount: revalidation.remainingAlerts.length,
+        remainingAlertCount: kind === 'report'
+          ? data.alerts.filter((alert) => alert.status !== 'resolved').length
+          : revalidation.remainingAlerts.length,
         invalidConfirmedCorrectCount: revalidation.invalidConfirmedCorrect.length,
         validationAlertCount: revalidation.validationAlertCount,
         orthographyAlertCount: revalidation.orthographyAlertCount,
-        alerts: revalidation.remainingAlerts.slice(0, PREFLIGHT_ALERT_PREVIEW),
+        alerts: kind === 'report' ? [] : revalidation.remainingAlerts.slice(0, PREFLIGHT_ALERT_PREVIEW),
         safeForFinal: !requiresDraft,
       };
       setPreflight(preflightSummary);
@@ -277,7 +332,7 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
           save(buffer, fileName);
         }
       }
-    } catch (cause) { setPreflight(null); setError(cause instanceof Error ? cause.message : 'No fue posible generar el archivo.'); }
+    } catch (cause) { setPreflight(null); setError(safeExternalErrorMessage(cause instanceof Error ? cause.message : null, 'No fue posible generar el archivo. Intenta nuevamente.')); }
     finally { setBusy(null); }
   }
 
@@ -286,5 +341,5 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
     { id: 'suggestions' as const, title: 'Base con sugerencias', copy: 'Todas las filas originales y una columna sugerida junto a cada campo evaluado.', button: 'Descargar sugerencias', icon: SparkIcon },
     { id: 'corrected' as const, title: upload.pending_task_count ? 'Excel corregido · borrador' : 'Excel corregido · validación previa', copy: 'Reaplica las reglas, conserva las tablas dinámicas y añade una columna que identifica quién realizó cada cambio.', button: 'Validar y descargar', icon: CheckIcon },
   ];
-  return <><div className="split-grid export-grid">{cards.map((card) => { const Icon = card.icon; return <section className="panel export-card" key={card.id}><div className="panel-body"><span className={`export-card-icon ${card.id}`}><Icon/></span><p className="overline">ARCHIVO INDEPENDIENTE</p><h2>{card.title}</h2><p>{card.copy}</p><button className="button button-primary" disabled={busy !== null} onClick={() => void run(card.id)} type="button"><DownloadIcon/>{busy === card.id ? 'Revalidando…' : card.button}</button></div></section>; })}</div>{preflight && <section className="panel" aria-live="polite"><div className="panel-header"><div><p className="overline">REVALIDACIÓN DEL OVERLAY</p><h2>{preflight.safeForFinal ? 'Las correcciones superan la validación final' : 'La jornada aún solo permite un Borrador'}</h2><p>{preflight.safeForFinal ? 'No reaparecieron alertas y no quedan tareas pendientes en el corte exportado.' : `${preflight.pendingTasks.toLocaleString('es-CO')} tareas pendientes · ${preflight.remainingAlertCount.toLocaleString('es-CO')} alertas activas · ${preflight.invalidConfirmedCorrectCount.toLocaleString('es-CO')} confirmaciones con evidencia modificada.`}</p><p>Motor ejecutado: {preflight.validationAlertCount.toLocaleString('es-CO')} alertas R/EST/JER y {preflight.orthographyAlertCount.toLocaleString('es-CO')} alertas ORT.</p></div><span className={`status ${preflight.safeForFinal ? 'resolved' : 'draft'}`}>{preflight.safeForFinal ? 'APTO PARA FINAL' : 'SOLO BORRADOR'}</span></div>{preflight.alerts.length > 0 && <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Regla</th><th>Fila</th><th>Campo</th><th>Resultado de la revalidación</th></tr></thead><tbody>{preflight.alerts.map((alert) => <tr key={alert.eventKey}><td><span className="rule-badge">{alert.ruleId}</span></td><td className="mono">{alert.sourceRow}</td><td>{alert.field || 'Revisión manual'}</td><td><strong>{alert.reasonLabel}</strong><small>{alert.detail}</small></td></tr>)}</tbody></table>{preflight.remainingAlertCount > preflight.alerts.length && <footer className="page-footer"><span>Se muestran {preflight.alerts.length.toLocaleString('es-CO')} de {preflight.remainingAlertCount.toLocaleString('es-CO')} alertas activas.</span></footer>}</div>}</section>}{error && <p className="form-error" role="alert">{error}</p>}</>;
+  return <><div className="split-grid export-grid">{cards.map((card) => { const Icon = card.icon; const busyLabel = card.id === 'report' ? 'Preparando reporte…' : 'Revalidando…'; return <section className="panel export-card" key={card.id}><div className="panel-body"><span className={`export-card-icon ${card.id}`}><Icon/></span><p className="overline">ARCHIVO INDEPENDIENTE</p><h2>{card.title}</h2><p>{card.copy}</p><button className="button button-primary" disabled={busy !== null} onClick={() => void run(card.id)} type="button"><DownloadIcon/>{busy === card.id ? busyLabel : card.button}</button></div></section>; })}</div>{preflight && <section className="panel" aria-live="polite"><div className="panel-header"><div><p className="overline">REVALIDACIÓN DEL OVERLAY</p><h2>{preflight.safeForFinal ? 'Las correcciones superan la validación final' : 'La jornada aún solo permite un Borrador'}</h2><p>{preflight.safeForFinal ? 'No reaparecieron alertas y no quedan tareas pendientes en el corte exportado.' : `${preflight.pendingTasks.toLocaleString('es-CO')} tareas pendientes · ${preflight.remainingAlertCount.toLocaleString('es-CO')} alertas activas · ${preflight.invalidConfirmedCorrectCount.toLocaleString('es-CO')} confirmaciones con evidencia modificada.`}</p><p>Motor ejecutado: {preflight.validationAlertCount.toLocaleString('es-CO')} alertas R/EST/JER y {preflight.orthographyAlertCount.toLocaleString('es-CO')} alertas ORT.</p></div><span className={`status ${preflight.safeForFinal ? 'resolved' : 'draft'}`}>{preflight.safeForFinal ? 'APTO PARA FINAL' : 'SOLO BORRADOR'}</span></div>{preflight.alerts.length > 0 && <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Regla</th><th>Fila</th><th>Campo</th><th>Resultado de la revalidación</th></tr></thead><tbody>{preflight.alerts.map((alert) => <tr key={alert.eventKey}><td><span className="rule-badge">{alert.ruleId}</span></td><td className="mono">{alert.sourceRow}</td><td>{alert.field || 'Revisión manual'}</td><td><strong>{alert.reasonLabel}</strong><small>{alert.detail}</small></td></tr>)}</tbody></table>{preflight.remainingAlertCount > preflight.alerts.length && <footer className="page-footer"><span>Se muestran {preflight.alerts.length.toLocaleString('es-CO')} de {preflight.remainingAlertCount.toLocaleString('es-CO')} alertas activas.</span></footer>}</div>}</section>}{error && <p className="form-error" role="alert">{error}</p>}</>;
 }

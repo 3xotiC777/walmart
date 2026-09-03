@@ -43,7 +43,7 @@ describe('plan de ingesta colaborativa', () => {
   });
 
   it('rechaza un elemento individual que no se pueda guardar con seguridad', () => {
-    expect(() => packIngestionBatches('alerts', [{ detail: 'á'.repeat(1_100_000) }], 800))
+    expect(() => packIngestionBatches('alerts', [{ detail: 'x'.repeat(MAX_INGESTION_REQUEST_BYTES) }], 800))
       .toThrow('Un elemento de alerts supera por sí solo el tamaño seguro de guardado.');
   });
 
