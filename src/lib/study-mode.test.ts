@@ -9,9 +9,17 @@ describe('modalidad del estudio', () => {
     ])).toBe(false);
   });
 
+  it('trata NO IDENTIFICABLE como ausencia de código', () => {
+    expect(resolveHasBarcode(true, [
+      { fields: { codiGo_barras: 'NO IDENTIFICABLE' } },
+      { fields: { codiGo_barras: ' no identificable ' } },
+    ])).toBe(false);
+  });
+
   it('respeta la modalidad con código cuando existe al menos uno', () => {
     expect(resolveHasBarcode(true, [
       { fields: { codiGo_barras: '' } },
+      { fields: { codiGo_barras: 'NO IDENTIFICABLE' } },
       { fields: { codiGo_barras: '001234' } },
     ])).toBe(true);
   });

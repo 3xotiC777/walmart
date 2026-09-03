@@ -277,6 +277,26 @@ describe('manifiesto colaborativo', () => {
     });
   });
 
+  it('no usa NO IDENTIFICABLE como alternativa ni como relacionado en una regla de código', () => {
+    const dataset = makeDataset([
+      { codiGo_barras: 'A', Descripcion: 'PRODUCTO MARCA' },
+      { codiGo_barras: 'A', Descripcion: 'PRODUCTO MARCA' },
+      { codiGo_barras: 'B', Descripcion: 'PRODUCTO MARCA' },
+      { codiGo_barras: 'NO IDENTIFICABLE', Descripcion: 'PRODUCTO MARCA' },
+      { codiGo_barras: ' no identificable ', Descripcion: 'PRODUCTO MARCA' },
+    ]);
+    dataset.hasBarcode = true;
+    const validation = onlyRules(validateDataset(dataset, TEST_HIERARCHY), ['R11']);
+    const manifest = createCollaborationManifest(dataset, validation);
+    const group = manifest.conflictGroups.find((item) => item.ruleId === 'R11');
+    const suggestion = manifest.tasks.flatMap((task) => task.alerts)
+      .find((alert) => alert.ruleId === 'R11')?.suggestion;
+
+    expect(group?.members.map((member) => member.barcode)).toEqual(['A', 'A', 'B']);
+    expect(suggestion?.alternatives.map((alternative) => alternative.value)).toEqual(['A', 'B']);
+    expect(suggestion?.value).toBe('A');
+  });
+
   it('mantiene manual una sugerencia ortográfica de confianza media', () => {
     const dataset = makeDataset([
       { Descripcion: 'PRODUCTO MARCA AZUL' },

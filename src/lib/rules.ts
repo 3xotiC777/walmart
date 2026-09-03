@@ -14,6 +14,7 @@ import {
   descriptionContainsExactBrand,
 } from './descriptionQuality';
 import { classifyDescriptionGramaje } from './descriptionGramaje';
+import { isUnidentifiedBarcode } from './barcode';
 
 interface CardinalityRule {
   id: string;
@@ -25,6 +26,11 @@ interface GroupData {
   rows: SourceRecord[];
   targets: Map<string, { displayValue: string; rows: SourceRecord[] }>;
 }
+
+const BARCODE_BASED_RULE_IDS = new Set([
+  'R01', 'R02', 'R03', 'R04', 'R05', 'R06', 'R07', 'R08', 'R09', 'R10', 'R11', 'R25', 'R29',
+]);
+const UNIDENTIFIED_BARCODE_NOTE = ' Los registros con codiGo_barras igual a NO IDENTIFICABLE se excluyen de esta revisión.';
 
 const AUTOMATIC_RULES: RuleDefinition[] = [
   ['R01', 'Código → descripción', 'Un código de barras solo puede tener una descripción.'],
@@ -80,7 +86,7 @@ const AUTOMATIC_RULES: RuleDefinition[] = [
 ].map(([id, name, description]) => ({
   id,
   name,
-  description,
+  description: `${description}${BARCODE_BASED_RULE_IDS.has(id) ? UNIDENTIFIED_BARCODE_NOTE : ''}`,
   status: id === 'R21' ? 'Visual no automatizado' : 'Automático',
 })) as RuleDefinition[];
 
@@ -341,6 +347,9 @@ export function validateDataset(
       : rule.keyFields;
     const groups = new Map<string, GroupData>();
     for (const record of dataset.records) {
+      const evaluatesBarcode = BARCODE_BASED_RULE_IDS.has(rule.id)
+        && !(!hasBarcode && DESCRIPTION_ONLY_CARDINALITY_RULES.has(rule.id));
+      if (evaluatesBarcode && isUnidentifiedBarcode(record.fields.codiGo_barras)) continue;
       if (rule.id === 'R08' && VARIABLE_WEIGHT_UNITS.has(normalizeText(record.fields.unidad_de_Medida))) {
         continue;
       }
@@ -453,7 +462,7 @@ export function validateDataset(
   for (const record of dataset.records) {
     const barcode = normalizeText(record.fields.codiGo_barras);
     const description = normalizeText(record.fields.Descripcion);
-    if (!barcode || !description) continue;
+    if (!barcode || isUnidentifiedBarcode(record.fields.codiGo_barras) || !description) continue;
 
     const variants = descriptionGroups.get(barcode) ?? new Map();
     const variant = variants.get(description) ?? {
@@ -545,7 +554,11 @@ export function validateDataset(
     const barcode = normalizeText(record.fields.codiGo_barras);
     const description = normalizeText(record.fields.Descripcion);
     const price = numericValue(record.fields.Precio_Unidad);
-    if (!description || price === null || (hasBarcode && !barcode)) continue;
+    if (
+      !description
+      || price === null
+      || (hasBarcode && (!barcode || isUnidentifiedBarcode(record.fields.codiGo_barras)))
+    ) continue;
 
     const groupKey = hasBarcode ? [barcode, description].join(GROUP_SEPARATOR) : description;
     const group = priceGroups.get(groupKey) ?? [];

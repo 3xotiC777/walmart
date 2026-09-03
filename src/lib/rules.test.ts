@@ -77,6 +77,59 @@ describe('motor de validación PQM', () => {
     expect(result.alerts.filter((alert) => alert.ruleId === 'R01')).toHaveLength(0);
   });
 
+  it('excluye NO IDENTIFICABLE de todas las reglas que evalúan el código de barras', () => {
+    const dataset = makeDataset([
+      {
+        codiGo_barras: 'NO IDENTIFICABLE',
+        Descripcion: 'ARROZ MARCA 500GR',
+        Categoria_Wm: 'CATEGORIA A',
+        Producto_Wm: 'PRODUCTO A',
+        Division_Wm: 'DIVISION A',
+        Marca_Wm: 'MARCA',
+        Tipo_Marca: 'COMERCIAL',
+        'Canasto Wm': 'CANASTO A',
+        Gramaje: 500,
+        unidad_de_Medida: 'GRAMOS',
+        codiGo_estandar: 'STD-A',
+        Precio_Unidad: 10,
+      },
+      {
+        codiGo_barras: ' no identificable ',
+        Descripcion: 'ARROZ MARCA 500GR',
+        Categoria_Wm: 'CATEGORIA B',
+        Producto_Wm: 'PRODUCTO B',
+        Division_Wm: 'DIVISION B',
+        Marca_Wm: 'OTRA MARCA',
+        Tipo_Marca: 'PRIVADA',
+        'Canasto Wm': 'CANASTO B',
+        Gramaje: 750,
+        unidad_de_Medida: 'UNIDADES',
+        codiGo_estandar: 'STD-B',
+        Precio_Unidad: 10,
+      },
+      {
+        codiGo_barras: 'NO IDENTIFICABLE',
+        Descripcion: 'ARROZ MARCA 500G',
+        Precio_Unidad: 100,
+      },
+      {
+        codiGo_barras: 'REAL-001',
+        Descripcion: 'ARROZ MARCA 500GR',
+      },
+    ]);
+    dataset.hasBarcode = true;
+
+    const barcodeRuleIds = new Set([
+      'R01', 'R02', 'R03', 'R04', 'R05', 'R06', 'R07', 'R08', 'R09', 'R10', 'R11', 'R25', 'R29',
+    ]);
+    const result = validateDataset(dataset, TEST_HIERARCHY);
+    const barcodeAlerts = result.alerts
+      .filter((alert) => barcodeRuleIds.has(alert.ruleId));
+
+    expect(barcodeAlerts).toEqual([]);
+    expect(result.alerts.some((alert) => alert.ruleId === 'R15' && alert.sourceRow === 3)).toBe(true);
+  });
+
   it('crea una alerta editable por cada celda estructural inválida de la fila', () => {
     const dataset = makeDataset([{
       'Row-Id': '',

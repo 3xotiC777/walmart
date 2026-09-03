@@ -1,4 +1,5 @@
 import { displayValue, normalizeText, numericValue } from './rules';
+import { isUnidentifiedBarcode } from './barcode';
 import type {
   AlertRecord,
   CellValue,
@@ -326,6 +327,8 @@ function groupDescriptor(
     records = dataset.records.filter((record) => {
       if (!recordMatches(record, keyFields, keyNormalized)) return false;
       if (!normalizeText(record.fields[targetField!])) return false;
+      const evaluatesBarcode = keyFields.includes('codiGo_barras') || targetField === 'codiGo_barras';
+      if (evaluatesBarcode && isUnidentifiedBarcode(record.fields.codiGo_barras)) return false;
       return alert.source.ruleId !== 'R08' || normalizeText(record.fields.unidad_de_Medida) !== 'KILOS';
     });
     keyValues = Object.fromEntries(keyFields.map((field) => [field, collaborationValue(sourceRecord.fields[field])]));
