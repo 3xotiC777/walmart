@@ -48,6 +48,7 @@ async function analyze(panel: UploadFileSnapshot, invoices: UploadFileSnapshot, 
       invoiceBuffer: invoices.buffer,
       invoiceFileName: invoices.file.name,
       hasBarcode,
+      purpose: 'collaboration-ingestion',
     };
     worker.postMessage(request, [panel.buffer, invoices.buffer]);
   });

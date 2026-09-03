@@ -40,6 +40,15 @@ function display(value: unknown): string | null {
   return normalized === null ? null : String(normalized);
 }
 
+function persistedEvidence(evidence: CollaborationManifest['tasks'][number]['alerts'][number]['suggestion']['evidence']) {
+  const { sourceRows: _sourceRows, ...compact } = evidence;
+  return compact;
+}
+
+function persistedAlternatives(alternatives: CollaborationManifest['tasks'][number]['alerts'][number]['suggestion']['alternatives']) {
+  return alternatives.map(({ value, count }) => ({ value, count }));
+}
+
 function batch(payload: Record<string, unknown[]>): IngestionBatch {
   return { key: crypto.randomUUID(), payload };
 }
@@ -110,11 +119,16 @@ export async function buildIngestionPlan(
     };
   });
 
+  const collaborationAlerts = manifest.tasks.flatMap((task) => task.alerts);
+  const collaborationAlertById = new Map(collaborationAlerts.map((alert) => [alert.id, alert]));
   const groups = manifest.conflictGroups.map((group) => {
     const alternatives = group.alertIds
-      .map((id) => manifest.tasks.flatMap((task) => task.alerts).find((alert) => alert.id === id)?.suggestion.alternatives ?? [])
+      .map((id) => collaborationAlertById.get(id)?.suggestion.alternatives ?? [])
       .flat();
-    const values = [...new Map(alternatives.map((alternative) => [String(alternative.value), alternative])).values()];
+    const values = [...new Map(alternatives.map((alternative) => [String(alternative.value), {
+      value: alternative.value,
+      count: alternative.count,
+    }])).values()];
     return {
       external_key: group.id,
       rule_code: group.ruleId,
@@ -167,6 +181,7 @@ export async function buildIngestionPlan(
     alert_count: task.alerts.length,
   }));
 
+  const fingerprintByEvidence = new Map<string, Promise<string>>();
   const alerts = await Promise.all(manifest.tasks.flatMap((task) => task.alerts.map(async (alert) => {
     const suggestion = alert.suggestion;
     const sourceRecord = recordByRow.get(alert.sourceRow);
@@ -176,6 +191,19 @@ export async function buildIngestionPlan(
     const originalValue = targetField
       ? display(sourceRecord?.fields[targetField])
       : alert.observed || null;
+    const fingerprintKey = JSON.stringify({
+      group: alert.conflictGroupId,
+      rule: alert.ruleId,
+      observed: originalValue,
+      method: suggestion.method,
+      evidence: persistedEvidence(suggestion.evidence),
+      alternatives: persistedAlternatives(suggestion.alternatives),
+    });
+    let fingerprint = fingerprintByEvidence.get(fingerprintKey);
+    if (!fingerprint) {
+      fingerprint = collaborationAlertEvidenceFingerprint(dataset, alert, sourceRecord);
+      fingerprintByEvidence.set(fingerprintKey, fingerprint);
+    }
     return {
       event_key: alert.id,
       task_external_key: task.id,
@@ -195,10 +223,13 @@ export async function buildIngestionPlan(
       suggested_value: suggestion.value === null ? null : String(suggestion.value),
       suggestion_method: suggestion.method,
       suggestion_confidence: suggestion.confidence,
-      suggestion_evidence: suggestion.evidence,
-      suggestion_alternatives: suggestion.alternatives,
+      // Las filas relacionadas ya se persisten una sola vez en group_members.
+      // Repetirlas dentro de cada alerta hace crecer una jornada de forma
+      // cuadrática y puede superar el límite de cadenas del navegador.
+      suggestion_evidence: persistedEvidence(suggestion.evidence),
+      suggestion_alternatives: persistedAlternatives(suggestion.alternatives),
       can_auto_apply: suggestion.autoApplicable && suggestion.confidence === 'high',
-      evidence_fingerprint_hex: await collaborationAlertEvidenceFingerprint(dataset, alert, sourceRecord),
+      evidence_fingerprint_hex: await fingerprint,
     };
   })));
 
@@ -228,6 +259,18 @@ export async function buildIngestionPlan(
     ...packIngestionBatches('alerts', alerts, 800),
     ...packIngestionBatches('invoices', invoiceLinks, 800),
   ];
-  const manifestHash = await sha256Hex(JSON.stringify({ source: manifest.sourceFile, headers: manifest.headers, tasks: manifest.tasks, blocks: manifest.blocks }));
+  // El hash solo necesita representar de manera estable el manifiesto que se
+  // guardó. Evitar serializar nuevamente las sugerencias y todos sus miembros
+  // relacionados mantiene el uso de memoria lineal en bases grandes.
+  const manifestHash = await sha256Hex(JSON.stringify({
+    source: manifest.sourceFile,
+    headers: manifest.headers,
+    rows: rows.map((row) => row.external_key),
+    groups: groups.map((group) => [group.external_key, group.affected_row_count, group.alert_count]),
+    blocks: blocks.map((item) => [item.external_key, item.alert_count, item.member_count, item.invoice_count]),
+    tasks: tasks.map((task) => [task.external_key, task.row_external_key, task.block_external_key, task.alert_count]),
+    alerts: alerts.map((alert) => [alert.event_key, alert.evidence_fingerprint_hex]),
+    invoices: invoiceLinks.map((invoice) => [invoice.ref_id_stg, invoice.external_url]),
+  }));
   return { batches, storedRowCount: rows.length, taskCount: tasks.length, alertCount: alerts.length, manifestHash };
 }

@@ -40,6 +40,7 @@ function orthographyAlertRecord(alert: OrthographyAlert, invoiceUrls: string[]):
 
 worker.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
   try {
+    const collaborationIngestion = event.data.purpose === 'collaboration-ingestion';
     progress('Leyendo el archivo de facturas…', 12);
     const invoices = parseInvoiceWorkbook(event.data.invoiceBuffer, event.data.invoiceFileName);
 
@@ -53,24 +54,30 @@ worker.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
 
     progress('Revisando ortografía y espacios…', 72);
     const orthographyAlerts = generateOrthographyAlerts(dataset);
-    const orthographyDisplayAlerts = orthographyAlerts.map((alert) => orthographyAlertRecord(
-      alert,
-      invoices.urlsByRef[alert.surveyId.trim().toUpperCase()] ?? [],
-    ));
+    const orthographyDisplayAlerts = collaborationIngestion
+      ? []
+      : orthographyAlerts.map((alert) => orthographyAlertRecord(
+          alert,
+          invoices.urlsByRef[alert.surveyId.trim().toUpperCase()] ?? [],
+        ));
 
     progress('Preparando tareas y sugerencias…', 80);
     const collaboration = createCollaborationManifest(dataset, validation, orthographyAlerts);
 
-    progress('Construyendo el Excel de alertas…', 86);
     const generatedAt = new Date();
-    const outputBuffer = buildOutputWorkbook(dataset, validation, generatedAt, orthographyAlerts);
+    const outputBuffer = collaborationIngestion
+      ? new ArrayBuffer(0)
+      : (() => {
+          progress('Construyendo el Excel de alertas…', 86);
+          return buildOutputWorkbook(dataset, validation, generatedAt, orthographyAlerts);
+        })();
 
     progress('Análisis completado.', 100);
     const payload: WorkerResult = {
       metrics: validation.metrics,
-      alerts: validation.alerts,
+      alerts: collaborationIngestion ? [] : validation.alerts,
       orthographyAlerts: orthographyDisplayAlerts,
-      ruleSummaries: validation.ruleSummaries,
+      ruleSummaries: collaborationIngestion ? [] : validation.ruleSummaries,
       sourceFile: dataset.sourceFile,
       invoiceFile: invoices.sourceFile,
       invoiceImages: invoices.totalImages,

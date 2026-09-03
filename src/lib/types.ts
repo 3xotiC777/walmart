@@ -144,4 +144,5 @@ export interface WorkerRequest {
   invoiceBuffer: ArrayBuffer;
   invoiceFileName: string;
   hasBarcode: boolean;
+  purpose?: 'full-report' | 'collaboration-ingestion';
 }

@@ -146,6 +146,31 @@ describe('plan de ingesta colaborativa', () => {
     expect(new Set(alerts.map((alert) => alert.task_external_key))).toEqual(new Set(['task-4']));
   });
 
+  it('persiste una sola copia de las filas relacionadas aunque un grupo produzca muchas alertas', async () => {
+    const dataset = makeDataset(Array.from({ length: 1_000 }, (_, index) => ({
+      codiGo_barras: 'GRUPO-GRANDE',
+      Descripcion: index % 2 === 0 ? 'PRODUCTO MARCA 1' : 'PRODUCTO MARCA 2',
+    })));
+    const result = onlyRules(validateDataset(dataset, TEST_HIERARCHY), ['R01']);
+    const manifest = createCollaborationManifest(dataset, result);
+    const plan = await buildIngestionPlan(dataset, manifest, {
+      sourceFile: 'facturas.xlsx',
+      urlsByRef: {},
+      totalImages: 0,
+    });
+    const alerts = items<{
+      suggestion_evidence: Record<string, unknown>;
+      suggestion_alternatives: Array<Record<string, unknown>>;
+    }>(plan, 'alerts');
+    const members = items(plan, 'group_members');
+
+    expect(alerts).toHaveLength(1_000);
+    expect(members).toHaveLength(1_000);
+    expect(alerts.every((alert) => !('sourceRows' in alert.suggestion_evidence))).toBe(true);
+    expect(alerts.every((alert) => alert.suggestion_alternatives.every((alternative) => !('sourceRows' in alternative)))).toBe(true);
+    expect(plan.batches.every((item) => ingestionBatchRequestByteLength(item) <= MAX_INGESTION_REQUEST_BYTES)).toBe(true);
+  });
+
   it('persiste promedio, umbral de 15 % y diferencia de R25 en la evidencia', async () => {
     const dataset = makeDataset(
       [10, 10, 10, 10, 100].map((price) => ({
