@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckIcon, UploadCloudIcon } from './icons';
 import { buildIngestionPlan } from '@/lib/ingestion';
+import { runIngestionBatches } from '@/lib/ingestion-runner';
 import { FileSnapshotError, resumableUpload, snapshotUploadFile, type UploadFileSnapshot } from '@/lib/storage-upload';
 import type { WorkerMessage, WorkerRequest, WorkerResult } from '@/lib/types';
 
@@ -167,12 +168,15 @@ export function UploadWorkspace() {
       setPhase('saving'); setMessage('Preparando tareas, relacionados y sugerencias…'); setProgress(59);
       const plan = await buildIngestionPlan(result.dataset, result.collaboration, result.invoiceCatalog);
       signal.throwIfAborted();
-      for (let index = 0; index < plan.batches.length; index += 1) {
-        const item = plan.batches[index];
-        setMessage(`Guardando lote ${index + 1} de ${plan.batches.length}…`);
-        await postJson(`/api/uploads/${uploadId}/ingest`, { batchKey: item.key, payload: item.payload }, 3, signal);
-        setProgress(60 + ((index + 1) / plan.batches.length) * 35);
-      }
+      setMessage(`Guardando 4 lotes en paralelo · 0 de ${plan.batches.length}…`);
+      await runIngestionBatches(
+        plan.batches,
+        (item) => postJson(`/api/uploads/${uploadId}/ingest`, { batchKey: item.key, payload: item.payload }, 3, signal).then(() => undefined),
+        (completed, total) => {
+          setMessage(`Guardando 4 lotes en paralelo · ${completed} de ${total}…`);
+          setProgress(60 + (completed / total) * 35);
+        },
+      );
       setMessage('Comprobando conteos y cerrando la jornada…');
       await postJson(`/api/uploads/${uploadId}/finalize`, {
         sourceTotalRows: result.dataset.records.length,

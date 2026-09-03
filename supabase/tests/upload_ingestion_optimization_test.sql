@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(10);
+select extensions.plan(15);
 
 select extensions.ok(
   position(
@@ -26,6 +26,46 @@ select extensions.ok(
     pg_get_functiondef('public.ingest_validation_batch(uuid,uuid,jsonb)'::regprocedure)
   ) = 0,
   'la ingesta ya no usa el OR que agotaba statement_timeout'
+);
+
+select extensions.ok(
+  position(
+    'for update' in
+    pg_get_functiondef('public.ingest_validation_batch(uuid,uuid,jsonb)'::regprocedure)
+  ) = 0,
+  'la ingesta no bloquea globalmente la fila de la jornada'
+);
+
+select extensions.ok(
+  position(
+    'update public.uploads set status = ''processing''' in
+    pg_get_functiondef('public.ingest_validation_batch(uuid,uuid,jsonb)'::regprocedure)
+  ) = 0,
+  'cada lote evita una escritura serializante sobre uploads'
+);
+
+select extensions.ok(
+  position(
+    'pg_advisory_xact_lock_shared' in
+    pg_get_functiondef('public.ingest_validation_batch(uuid,uuid,jsonb)'::regprocedure)
+  ) > 0,
+  'los lotes usan un bloqueo compartido por jornada'
+);
+
+select extensions.ok(
+  position(
+    '''batch:''' in
+    pg_get_functiondef('public.ingest_validation_batch(uuid,uuid,jsonb)'::regprocedure)
+  ) > 0,
+  'los reintentos del mismo contenido conservan exclusión idempotente'
+);
+
+select extensions.ok(
+  position(
+    'pg_advisory_xact_lock' in
+    pg_get_functiondef('public.finalize_upload_ingestion(uuid,integer,integer,integer,integer,integer,text)'::regprocedure)
+  ) > 0,
+  'el cierre espera los lotes concurrentes antes de comprobar conteos'
 );
 
 select extensions.ok(
