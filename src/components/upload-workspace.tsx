@@ -7,6 +7,8 @@ import { buildIngestionPlan } from '@/lib/ingestion';
 import { runIngestionBatches } from '@/lib/ingestion-runner';
 import { FileSnapshotError, resumableUpload, snapshotUploadFile, type UploadFileSnapshot } from '@/lib/storage-upload';
 import { safeExternalErrorMessage } from '@/lib/database-error';
+import { DatabaseOperationError, runDatabaseOperation } from '@/lib/database-operation';
+import { createBrowserSupabaseClient } from '@/lib/supabase/client';
 import type { WorkerMessage, WorkerRequest, WorkerResult } from '@/lib/types';
 
 type Phase = 'select' | 'validating' | 'uploading' | 'saving' | 'done' | 'error';
@@ -172,24 +174,30 @@ export function UploadWorkspace() {
       setPhase('saving'); setMessage('Preparando tareas, relacionados y sugerencias…'); setProgress(59);
       const plan = await buildIngestionPlan(result.dataset, result.collaboration, result.invoiceCatalog);
       signal.throwIfAborted();
+      const supabase = createBrowserSupabaseClient();
       setMessage(`Guardando por etapas · 0 de ${plan.batches.length}…`);
       await runIngestionBatches(
         plan.batches,
-        (item) => postJson(`/api/uploads/${uploadId}/ingest`, { batchKey: item.key, payload: item.payload }, 5, signal).then(() => undefined),
+        (item) => runDatabaseOperation(() => supabase.rpc('ingest_validation_batch', {
+          p_upload_id: uploadId,
+          p_batch_key: item.key,
+          p_payload: item.payload,
+        }).abortSignal(signal), { attempts: 5, signal }).then(() => undefined),
         (completed, total) => {
           setMessage(`Guardando por etapas · ${completed} de ${total}…`);
           setProgress(60 + (completed / total) * 35);
         },
       );
       setMessage('Comprobando conteos y cerrando la jornada…');
-      await postJson(`/api/uploads/${uploadId}/finalize`, {
-        sourceTotalRows: result.dataset.records.length,
-        storedRowCount: plan.storedRowCount,
-        taskCount: plan.taskCount,
-        alertCount: plan.alertCount,
-        batchCount: plan.batches.length,
-        manifestHash: plan.manifestHash,
-      }, 5, signal);
+      await runDatabaseOperation(() => supabase.rpc('finalize_upload_ingestion', {
+        p_upload_id: uploadId,
+        p_source_total_rows: result.dataset.records.length,
+        p_expected_stored_row_count: plan.storedRowCount,
+        p_expected_task_count: plan.taskCount,
+        p_expected_alert_count: plan.alertCount,
+        p_expected_batch_count: plan.batches.length,
+        p_manifest_hash_hex: plan.manifestHash,
+      }).abortSignal(signal), { attempts: 5, signal });
       setProgress(100); setPhase('done'); setMessage('Jornada lista para repartir.');
       router.push(`/workspace/reparto/${uploadId}`); router.refresh();
     } catch (cause) {
@@ -199,7 +207,7 @@ export function UploadWorkspace() {
         if (cause.label === 'referencias de facturas') setInvoices(null);
       }
       const failure = cause instanceof Error ? cause.message : 'La carga no pudo completarse.';
-      const retryable = cause instanceof ApiRequestError && cause.retryable;
+      const retryable = (cause instanceof ApiRequestError || cause instanceof DatabaseOperationError) && cause.retryable;
       if (uploadId && !retryable) void postJson(`/api/uploads/${uploadId}/fail`, { message: failure }, 1).catch(() => undefined);
       setError(failure); setPhase('error'); setMessage('');
     } finally {
