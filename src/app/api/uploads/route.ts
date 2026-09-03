@@ -2,14 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { getViewer } from '@/lib/auth';
 import { jsonError } from '@/lib/http';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { findResumableUpload } from '@/lib/upload-resume';
 import { NextResponse } from 'next/server';
 
 function safeName(value: string) {
   return value.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').slice(0, 100) || 'archivo.xlsx';
-}
-
-function byteaMatches(value: unknown, expectedHex: string): boolean {
-  return String(value ?? '').replace(/^\\x/i, '').toLowerCase() === expectedHex.toLowerCase();
 }
 
 export async function POST(request: Request) {
@@ -25,6 +22,34 @@ export async function POST(request: Request) {
   const panelPath = `${viewer.workspaceId}/${uploadId}/panel/${safeName(panelName)}`;
   const invoicePath = `${viewer.workspaceId}/${uploadId}/invoices/${safeName(invoiceName)}`;
   const supabase = await createServerSupabaseClient();
+
+  const lookupResumableUpload = async () => {
+    const { data: candidates } = await supabase
+      .from('uploads')
+      .select('id, panel_object_path, invoice_object_path, panel_sha256, invoice_sha256, has_barcode, status')
+      .eq('workspace_id', viewer.workspaceId)
+      .in('status', ['uploading', 'processing'])
+      .order('created_at', { ascending: false })
+      .limit(100);
+    return findResumableUpload(candidates ?? [], {
+      panelHash: body.panelHash,
+      invoiceHash: body.invoiceHash,
+      hasBarcode: body.hasBarcode,
+    });
+  };
+
+  const pendingUpload = await lookupResumableUpload();
+  if (pendingUpload?.invoice_object_path) {
+    return NextResponse.json({
+      ok: true,
+      resumed: true,
+      upload: pendingUpload,
+      uploadId: pendingUpload.id,
+      panelPath: pendingUpload.panel_object_path,
+      invoicePath: pendingUpload.invoice_object_path,
+    });
+  }
+
   const { data, error } = await supabase.rpc('create_upload', {
     p_upload_id: uploadId,
     p_workspace_id: viewer.workspaceId,
@@ -41,17 +66,9 @@ export async function POST(request: Request) {
   if (error) {
     const duplicate = error.code === '23505';
     if (duplicate) {
-      const { data: candidates } = await supabase
-        .from('uploads')
-        .select('id, panel_object_path, invoice_object_path, panel_sha256, invoice_sha256, has_barcode, status')
-        .eq('workspace_id', viewer.workspaceId)
-        .in('status', ['uploading', 'processing'])
-        .order('created_at', { ascending: false })
-        .limit(20);
-      const resumable = (candidates ?? []).find((candidate) =>
-        byteaMatches(candidate.panel_sha256, body.panelHash)
-        && byteaMatches(candidate.invoice_sha256, body.invoiceHash)
-        && candidate.has_barcode === body.hasBarcode);
+      // Compatibility while the database migration is rolling out, and a
+      // race-safe second lookup when two retries arrive at the same time.
+      const resumable = await lookupResumableUpload();
       if (resumable?.invoice_object_path) {
         return NextResponse.json({
           ok: true,
@@ -63,7 +80,7 @@ export async function POST(request: Request) {
         });
       }
     }
-    return jsonError(duplicate ? 'Este panel ya fue cargado en una jornada activa.' : error.message, duplicate ? 409 : 400);
+    return jsonError(duplicate ? 'No fue posible iniciar otra jornada con este archivo. Intenta nuevamente.' : error.message, duplicate ? 409 : 400);
   }
   return NextResponse.json({ ok: true, resumed: false, upload: data, uploadId, panelPath, invoicePath });
 }
