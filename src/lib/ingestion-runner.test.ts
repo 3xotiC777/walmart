@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { IngestionBatch } from './ingestion';
-import { ingestionBatchStage, runIngestionBatches } from './ingestion-runner';
+import {
+  ALERT_INGESTION_CONCURRENCY,
+  ingestionBatchStage,
+  ingestionStageConcurrency,
+  runIngestionBatches,
+} from './ingestion-runner';
 
 function item(key: string, id: number): IngestionBatch {
   return { key: `00000000-0000-4000-8000-${String(id).padStart(12, '0')}`, payload: { [key]: [{ id }] } };
@@ -12,6 +17,13 @@ describe('guardado concurrente de la ingesta', () => {
     expect(ingestionBatchStage(item('group_members', 2))).toBe(1);
     expect(ingestionBatchStage(item('alerts', 3))).toBe(2);
     expect(() => ingestionBatchStage(item('desconocido', 4))).toThrow(/desconocido/i);
+  });
+
+  it('limita solo la etapa pesada de alertas', () => {
+    expect(ingestionStageConcurrency(0, 4)).toBe(4);
+    expect(ingestionStageConcurrency(1, 4)).toBe(4);
+    expect(ingestionStageConcurrency(2, 4)).toBe(ALERT_INGESTION_CONCURRENCY);
+    expect(ingestionStageConcurrency(2, 1)).toBe(1);
   });
 
   it('procesa en paralelo sin adelantar etapas dependientes', async () => {
@@ -49,5 +61,20 @@ describe('guardado concurrente de la ingesta', () => {
 
     await expect(runIngestionBatches(batches, ingest, () => undefined, 2)).rejects.toBe(failure);
     expect(ingest.mock.calls.length).toBeLessThan(batches.length);
+  });
+
+  it('no ejecuta más de dos lotes de alertas simultáneos', async () => {
+    const batches = Array.from({ length: 6 }, (_, index) => item('alerts', index + 1));
+    let active = 0;
+    let maximumActive = 0;
+
+    await runIngestionBatches(batches, async () => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+    }, () => undefined, 4);
+
+    expect(maximumActive).toBe(ALERT_INGESTION_CONCURRENCY);
   });
 });

@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(15);
+select extensions.plan(17);
 
 select extensions.ok(
   position(
@@ -120,6 +120,31 @@ select extensions.ok(
     pg_get_functiondef('public.finalize_upload_ingestion(uuid,integer,integer,integer,integer,integer,text)'::regprocedure)
   ) > 0,
   'un reintento devuelve la jornada ya finalizada cuando manifiesto y conteos coinciden'
+);
+
+select extensions.ok(
+  coalesce((
+    select p.proconfig @> array['statement_timeout=60s']
+    from pg_proc p
+    where p.oid = 'public.ingest_validation_batch(uuid,uuid,jsonb)'::regprocedure
+  ), false),
+  'la función de ingesta dispone de margen para lotes pesados'
+);
+
+select extensions.ok(
+  position(
+    'join public.source_rows sr' in
+    split_part(
+      split_part(
+        pg_get_functiondef('public.ingest_validation_batch(uuid,uuid,jsonb)'::regprocedure),
+        'insert into public.validation_alerts',
+        2
+      ),
+      'insert into public.invoice_links',
+      1
+    )
+  ) = 0,
+  'las alertas no realizan una búsqueda redundante de la fila fuente'
 );
 
 select * from extensions.finish();

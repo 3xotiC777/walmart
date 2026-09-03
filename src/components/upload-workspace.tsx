@@ -168,12 +168,12 @@ export function UploadWorkspace() {
       setPhase('saving'); setMessage('Preparando tareas, relacionados y sugerencias…'); setProgress(59);
       const plan = await buildIngestionPlan(result.dataset, result.collaboration, result.invoiceCatalog);
       signal.throwIfAborted();
-      setMessage(`Guardando 4 lotes en paralelo · 0 de ${plan.batches.length}…`);
+      setMessage(`Guardando por etapas · 0 de ${plan.batches.length}…`);
       await runIngestionBatches(
         plan.batches,
         (item) => postJson(`/api/uploads/${uploadId}/ingest`, { batchKey: item.key, payload: item.payload }, 3, signal).then(() => undefined),
         (completed, total) => {
-          setMessage(`Guardando 4 lotes en paralelo · ${completed} de ${total}…`);
+          setMessage(`Guardando por etapas · ${completed} de ${total}…`);
           setProgress(60 + (completed / total) * 35);
         },
       );

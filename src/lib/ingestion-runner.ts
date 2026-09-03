@@ -1,6 +1,10 @@
 import type { IngestionBatch } from './ingestion';
 
 export const INGESTION_CONCURRENCY = 4;
+// Los lotes de alertas incluyen evidencia JSONB y son bastante más costosos
+// que filas, tareas o grupos. Limitar solo esta etapa evita que varias
+// transacciones pesadas compitan por el mismo I/O del proyecto de Supabase.
+export const ALERT_INGESTION_CONCURRENCY = 2;
 
 const STAGE_BY_PAYLOAD: Record<string, number> = {
   rows: 0,
@@ -18,6 +22,12 @@ export function ingestionBatchStage(item: IngestionBatch): number {
     throw new Error('El plan de guardado contiene un lote desconocido.');
   }
   return STAGE_BY_PAYLOAD[keys[0]];
+}
+
+export function ingestionStageConcurrency(stage: number, requested: number): number {
+  return stage === STAGE_BY_PAYLOAD.alerts
+    ? Math.min(requested, ALERT_INGESTION_CONCURRENCY)
+    : requested;
 }
 
 export async function runIngestionBatches(
@@ -40,8 +50,9 @@ export async function runIngestionBatches(
   let firstError: unknown;
   for (const stage of [...stages.keys()].sort((left, right) => left - right)) {
     const pending = stages.get(stage) ?? [];
+    const stageConcurrency = ingestionStageConcurrency(stage, concurrency);
     let cursor = 0;
-    const workers = Array.from({ length: Math.min(concurrency, pending.length) }, async () => {
+    const workers = Array.from({ length: Math.min(stageConcurrency, pending.length) }, async () => {
       while (!firstError) {
         const index = cursor;
         cursor += 1;
