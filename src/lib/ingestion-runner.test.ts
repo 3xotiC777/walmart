@@ -19,7 +19,7 @@ describe('guardado concurrente de la ingesta', () => {
     expect(() => ingestionBatchStage(item('desconocido', 4))).toThrow(/desconocido/i);
   });
 
-  it('limita solo la etapa pesada de alertas', () => {
+  it('usa la concurrencia normal para las alertas compactas', () => {
     expect(ingestionStageConcurrency(0, 4)).toBe(4);
     expect(ingestionStageConcurrency(1, 4)).toBe(4);
     expect(ingestionStageConcurrency(2, 4)).toBe(ALERT_INGESTION_CONCURRENCY);
@@ -63,7 +63,7 @@ describe('guardado concurrente de la ingesta', () => {
     expect(ingest.mock.calls.length).toBeLessThan(batches.length);
   });
 
-  it('no ejecuta más de dos lotes de alertas simultáneos', async () => {
+  it('no excede la concurrencia configurada para alertas', async () => {
     const batches = Array.from({ length: 6 }, (_, index) => item('alerts', index + 1));
     let active = 0;
     let maximumActive = 0;

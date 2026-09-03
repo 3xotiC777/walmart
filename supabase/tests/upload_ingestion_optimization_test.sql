@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(17);
+select extensions.plan(19);
 
 select extensions.ok(
   position(
@@ -145,6 +145,22 @@ select extensions.ok(
     )
   ) = 0,
   'las alertas no realizan una búsqueda redundante de la fila fuente'
+);
+
+select extensions.ok(
+  position(
+    'v_batches >= p_expected_batch_count' in
+    pg_get_functiondef('public.finalize_upload_ingestion(uuid,integer,integer,integer,integer,integer,text)'::regprocedure)
+  ) > 0,
+  'un cierre idempotente admite recibos adicionales de una reanudación reempaquetada'
+);
+
+select extensions.ok(
+  position(
+    'v_batches < p_expected_batch_count' in
+    pg_get_functiondef('public.finalize_upload_ingestion(uuid,integer,integer,integer,integer,integer,text)'::regprocedure)
+  ) > 0,
+  'la finalización todavía rechaza una ingesta con menos lotes que los esperados'
 );
 
 select * from extensions.finish();

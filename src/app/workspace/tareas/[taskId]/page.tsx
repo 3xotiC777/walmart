@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { TaskReview, type AlertView, type CellResolutionView } from '@/components/task-review';
 import { RelatedEditor } from '@/components/related-editor';
+import { resolveStoredAlertAlternatives } from '@/lib/alert-alternatives';
 import { requireViewer } from '@/lib/auth';
 import { compareRuleIds } from '@/lib/rules';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
@@ -12,11 +13,24 @@ export default async function TaskPage({ params }: { params: Promise<{ taskId: s
   const viewer = await requireViewer();
   const { taskId } = await params;
   const supabase = await createServerSupabaseClient();
-  const { data: task } = await supabase.from('review_tasks').select('id, upload_id, source_row_id, status, version, is_related_only, source_rows(id, excel_row, row_id, id_dn_w, barcode, description, field_values, cell_resolutions(column_index, resolved_value)), assignment_blocks(id, version, assigned_to), validation_alerts(*)').eq('id', taskId).maybeSingle();
+  const { data: task } = await supabase.from('review_tasks').select('id, upload_id, source_row_id, status, version, is_related_only, source_rows(id, excel_row, row_id, id_dn_w, barcode, description, field_values, cell_resolutions(column_index, resolved_value)), assignment_blocks(id, version, assigned_to), validation_alerts(*, conflict_group:conflict_groups!validation_alerts_group_id_upload_id_workspace_id_fkey(observed_values))').eq('id', taskId).maybeSingle();
   if (!task) notFound();
   const source = Array.isArray(task.source_rows) ? task.source_rows[0] : task.source_rows;
   const block = Array.isArray(task.assignment_blocks) ? task.assignment_blocks[0] : task.assignment_blocks;
-  const alerts = [...((task.validation_alerts ?? []) as AlertView[])]
+  type AlertWithConflictGroup = AlertView & {
+    conflict_group?: { observed_values: unknown } | Array<{ observed_values: unknown }> | null;
+  };
+  const alerts = ((task.validation_alerts ?? []) as AlertWithConflictGroup[])
+    .map(({ conflict_group: relation, ...alert }) => {
+      const group = Array.isArray(relation) ? relation[0] : relation;
+      return {
+        ...alert,
+        suggestion_alternatives: resolveStoredAlertAlternatives(
+          alert.suggestion_alternatives,
+          group?.observed_values,
+        ),
+      } satisfies AlertView;
+    })
     .sort((left, right) => compareRuleIds(left.rule_code, right.rule_code));
   const resolutions = ((source?.cell_resolutions ?? []) as CellResolutionView[])
     .filter((item) => Number.isInteger(item.column_index));

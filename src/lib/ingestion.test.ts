@@ -162,12 +162,20 @@ describe('plan de ingesta colaborativa', () => {
       suggestion_evidence: Record<string, unknown>;
       suggestion_alternatives: Array<Record<string, unknown>>;
     }>(plan, 'alerts');
+    const groups = items<{
+      observed_values: Array<Record<string, unknown>>;
+    }>(plan, 'groups');
     const members = items(plan, 'group_members');
 
     expect(alerts).toHaveLength(1_000);
     expect(members).toHaveLength(1_000);
     expect(alerts.every((alert) => !('sourceRows' in alert.suggestion_evidence))).toBe(true);
-    expect(alerts.every((alert) => alert.suggestion_alternatives.every((alternative) => !('sourceRows' in alternative)))).toBe(true);
+    expect(alerts.every((alert) => alert.suggestion_alternatives.length === 0)).toBe(true);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].observed_values).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 'PRODUCTO MARCA 1', count: 500 }),
+      expect.objectContaining({ value: 'PRODUCTO MARCA 2', count: 500 }),
+    ]));
     expect(plan.batches.every((item) => ingestionBatchRequestByteLength(item) <= MAX_INGESTION_REQUEST_BYTES)).toBe(true);
   });
 

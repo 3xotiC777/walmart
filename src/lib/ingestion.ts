@@ -227,7 +227,10 @@ export async function buildIngestionPlan(
       // Repetirlas dentro de cada alerta hace crecer una jornada de forma
       // cuadrática y puede superar el límite de cadenas del navegador.
       suggestion_evidence: persistedEvidence(suggestion.evidence),
-      suggestion_alternatives: persistedAlternatives(suggestion.alternatives),
+      // Las alternativas ya viven una sola vez en conflict_groups.observed_values.
+      // Duplicarlas en cada alerta llegó a añadir cientos de MB al guardado de
+      // una sola jornada. La pantalla de revisión las reconstruye desde el grupo.
+      suggestion_alternatives: [],
       can_auto_apply: suggestion.autoApplicable && suggestion.confidence === 'high',
       evidence_fingerprint_hex: await fingerprint,
     };

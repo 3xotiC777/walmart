@@ -1,10 +1,10 @@
 import type { IngestionBatch } from './ingestion';
 
 export const INGESTION_CONCURRENCY = 4;
-// Los lotes de alertas incluyen evidencia JSONB y son bastante más costosos
-// que filas, tareas o grupos. Limitar solo esta etapa evita que varias
-// transacciones pesadas compitan por el mismo I/O del proyecto de Supabase.
-export const ALERT_INGESTION_CONCURRENCY = 2;
+// Las alternativas voluminosas se normalizan en conflict_groups, por lo que
+// los lotes de alertas ya pueden aprovechar la concurrencia normal sin repetir
+// cientos de MB ni competir con transacciones desproporcionadas.
+export const ALERT_INGESTION_CONCURRENCY = 4;
 
 const STAGE_BY_PAYLOAD: Record<string, number> = {
   rows: 0,

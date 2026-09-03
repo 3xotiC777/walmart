@@ -140,6 +140,11 @@ Ejemplo exacto mínimo:
 
 Las colecciones ausentes se tratan como arreglos vacíos. Después del último lote:
 
+Las alternativas de una alerta se guardan una sola vez en
+`conflict_groups.observed_values`. `validation_alerts.suggestion_alternatives`
+queda vacío en cargas nuevas y solo se conserva por compatibilidad con jornadas
+anteriores; la pantalla de revisión combina ambos formatos transparentemente.
+
 ```text
 finalize_upload_ingestion(
   upload_id,
