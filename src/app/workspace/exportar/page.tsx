@@ -11,7 +11,7 @@ export default async function ExportPage() {
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase
     .from('uploads')
-    .select('id, display_name, panel_object_path, has_barcode, total_rows, task_count, alert_count, orthography_count, pending_task_count, corrected_cell_count, confirmed_correct_count, created_at')
+    .select('id, display_name, panel_object_path, has_barcode, orthography_lexicon, total_rows, task_count, alert_count, orthography_count, pending_task_count, corrected_cell_count, confirmed_correct_count, created_at')
     .eq('workspace_id', viewer.workspaceId)
     .in('status', [...CURRENT_JOURNEY_STATUSES])
     .order('created_at', { ascending: false })

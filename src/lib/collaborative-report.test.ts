@@ -279,4 +279,22 @@ describe('reporte colaborativo de alertas', () => {
       Estado: 'pending',
     });
   });
+
+  it('incluye el texto similar y su porcentaje para revisión y descarga', () => {
+    const output = buildCollaborativeReportWorkbook({
+      upload: { display_name: 'Prueba', has_barcode: true, total_rows: 1, task_count: 1, alert_count: 1,
+        orthography_count: 0, pending_task_count: 1, corrected_cell_count: 0, confirmed_correct_count: 0,
+        created_at: '2026-09-25T00:00:00.000Z' },
+      tasks: [{ id: 'task-1', status: 'pending', source_rows: { excel_row: 2, row_id: 'R1', id_dn_w: 'I1', barcode: '001', description: 'PRODUCTO MARCAA' } }],
+      alerts: [{ id: 'alert-1', task_id: 'task-1', rule_code: 'R31', category: 'validation',
+        affected_field: 'Descripcion', original_value: 'PRODUCTO MARCAA', expected_or_conflicts: 'PRODUCTO MARCA',
+        detail: 'Similitud de 96%.', suggested_value: null, suggestion_confidence: 'none',
+        suggestion_method: 'manual-review', suggestion_evidence: { inputs: { Coincidencia: 'PRODUCTO MARCA', Similitud_pct: 96 } },
+        status: 'pending' }],
+      decisions: [], profiles: [],
+    });
+    const book = XLSX.read(output, { type: 'array' });
+    const alertRows = rows(book.Sheets.Alertas);
+    expect(rowObject(alertRows[0], alertRows[1])).toMatchObject({ Texto_Similar: 'PRODUCTO MARCA', Porcentaje_Similitud: 96 });
+  });
 });

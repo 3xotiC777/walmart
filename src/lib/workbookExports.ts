@@ -32,6 +32,13 @@ export interface WorkbookSuggestion {
   confidence?: WorkbookSuggestionConfidence;
 }
 
+export interface WorkbookSimilarityMatch {
+  excelRow: number;
+  field: 'Descripcion' | 'Marca_Wm';
+  match: string;
+  percentage: number;
+}
+
 export interface SuggestionsWorkbookOptions {
   sheetName?: string;
   /**
@@ -39,6 +46,8 @@ export interface SuggestionsWorkbookOptions {
    * when none of its rows currently has a suggestion.
    */
   evaluatedFields?: readonly string[];
+  /** Coincidencias R31/R32 solo para consulta; nunca son una corrección automática. */
+  similarityMatches?: readonly WorkbookSimilarityMatch[];
 }
 
 /** Fields that can receive an actual row/cell correction in the current rules. */
@@ -209,11 +218,22 @@ export function buildSuggestionsWorkbook(
     proposalsByCell.set(key, suggestion.proposedValue);
   }
 
+  const matchesByCell = new Map<string, WorkbookSimilarityMatch>();
+  for (const match of options.similarityMatches ?? []) {
+    validateSuggestionRow(recordRows, match.excelRow);
+    const columnIndex = dataset.headers.indexOf(match.field);
+    if (columnIndex < 0 || !match.match || !Number.isFinite(match.percentage)) continue;
+    matchesByCell.set(`${match.excelRow}:${columnIndex}`, match);
+  }
+  const similarityColumns = new Set<number>();
+  for (const match of matchesByCell.values()) similarityColumns.add(dataset.headers.indexOf(match.field));
+
   const headerRow: WorkbookCellValue[] = [];
   dataset.headers.forEach((_header, columnIndex) => {
     const header = displayHeader(dataset, columnIndex);
     headerRow.push(header);
     if (evaluatedColumns.has(columnIndex)) headerRow.push(`${header}_Sugerida`);
+    if (similarityColumns.has(columnIndex)) headerRow.push(`${header}_Similar`, `${header}_Similitud_%`);
   });
 
   const recordByExcelRow = new Map(dataset.records.map((record) => [record.excelRow, record]));
@@ -228,6 +248,10 @@ export function buildSuggestionsWorkbook(
         const proposalKey = `${record.excelRow}:${columnIndex}`;
         output.push(proposalsByCell.has(proposalKey) ? proposalsByCell.get(proposalKey) : null);
       }
+      if (similarityColumns.has(columnIndex)) {
+        const match = matchesByCell.get(`${record.excelRow}:${columnIndex}`);
+        output.push(match?.match ?? null, match?.percentage ?? null);
+      }
     });
     return output;
   });
@@ -240,6 +264,13 @@ export function buildSuggestionsWorkbook(
   sheet['!cols'] = headerRow.map((header, index) => ({
     wch: Math.min(48, Math.max(12, String(header ?? '').length + (index % 2 === 1 ? 1 : 2))),
   }));
+  for (let columnIndex = 0; columnIndex < headerRow.length; columnIndex += 1) {
+    if (!String(headerRow[columnIndex]).endsWith('_Similitud_%')) continue;
+    for (let rowIndex = 1; rowIndex <= dataRows.length; rowIndex += 1) {
+      const cell = sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })];
+      if (cell) cell.z = '0.00"%"';
+    }
+  }
 
   const workbook = XLSX.utils.book_new();
   workbook.Props = {

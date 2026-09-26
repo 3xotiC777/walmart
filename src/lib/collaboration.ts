@@ -712,6 +712,16 @@ function buildSuggestion(
     };
   }
 
+  if (alert.source.ruleId === 'R31' || alert.source.ruleId === 'R32') {
+    const suggestion = manualSuggestion(dataset, descriptor, alert, [], 'manual-review',
+      'La similitud de texto no demuestra cuál valor es correcto. Compara los registros y decide manualmente.');
+    suggestion.evidence.inputs = {
+      Coincidencia: alert.source.similarityMatch ?? alert.source.expected,
+      Similitud_pct: alert.source.similarityPercent ?? null,
+    };
+    return suggestion;
+  }
+
   return manualSuggestion(dataset, descriptor, alert);
 }
 
@@ -797,11 +807,20 @@ function buildBlocks(
     rowsByRoot.set(root, rows);
   }
 
+  const groupsByTaskRow = new Map<number, CollaborationConflictGroup[]>();
+  for (const group of groups) for (const member of group.members) {
+    if (!taskByRow.has(member.sourceRow)) continue;
+    const values = groupsByTaskRow.get(member.sourceRow) ?? [];
+    values.push(group);
+    groupsByTaskRow.set(member.sourceRow, values);
+  }
+
   return [...rowsByRoot.values()]
     .map((rows) => {
       const sourceRows = sortedNumbers(rows);
       const blockTasks = sourceRows.map((sourceRow) => taskByRow.get(sourceRow)!);
-      const blockGroups = groups.filter((group) => group.members.some((member) => sourceRows.includes(member.sourceRow)));
+      const blockGroups = [...new Map(sourceRows.flatMap((sourceRow) => groupsByTaskRow.get(sourceRow) ?? [])
+        .map((group) => [group.id, group])).values()];
       const relatedSourceRows = sortedNumbers(blockGroups.flatMap((group) => group.members.map((member) => member.sourceRow)));
       const invoiceUrls = new Set(blockTasks.flatMap((task) => task.invoiceUrls));
       const alertCount = blockTasks.reduce((sum, task) => sum + task.alerts.length, 0);

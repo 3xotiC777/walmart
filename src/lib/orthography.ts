@@ -1,5 +1,5 @@
 import learningData from '../data/orthography-learning.json';
-import type { CellValue, OrthographyAlert, SourceDataset, SourceRecord } from './types';
+import type { CellValue, OrthographyAlert, OrthographyLexicon, SourceDataset, SourceRecord } from './types';
 
 const REPORT_FIELDS = ['Marca_Wm', 'Tipo_Marca', 'Descripcion', 'Canasto Wm'] as const;
 const VOCABULARY_FIELDS = ['Producto_Wm', 'Marca_Wm', 'Categoria_Wm', 'Division_Wm', 'Canasto Wm'] as const;
@@ -78,6 +78,10 @@ export function normalizeOrthographyText(value: CellValue): string | null {
 
 function normalized(value: CellValue): string {
   return normalizeOrthographyText(value) ?? '';
+}
+
+function bareToken(value: string): string {
+  return value.replace(/^[^\p{L}\d]+|[^\p{L}\d]+$/gu, '');
 }
 
 function indexCharacters(text: string): Map<string, number[]> {
@@ -246,6 +250,7 @@ function topPhraseCandidates(
   validPhrases: string[],
   frequencies: Map<string, number>,
   recordsByPhrase: Map<string, SourceRecord[]>,
+  protectedWords: ReadonlySet<string> = new Set(),
 ): PhraseCandidate[] {
   const suspiciousCounts = new Map<string, number>();
   for (const character of suspicious) suspiciousCounts.set(character, (suspiciousCounts.get(character) ?? 0) + 1);
@@ -260,6 +265,7 @@ function topPhraseCandidates(
     const frequency = frequencies.get(phrase) ?? 0;
     if (ratio < PHRASE_SIMILARITY_CUTOFF || frequency < Math.max(VALID_PHRASE_MINIMUM, suspiciousFrequency * 2)) continue;
     if (!safeCorrection(suspicious, phrase)) continue;
+    if (suspicious.split(' ').some((token) => protectedWords.has(bareToken(token)) && !phrase.split(' ').some((part) => bareToken(part) === bareToken(token)))) continue;
     if (!phraseContextsMatch(suspiciousRecords, recordsByPhrase.get(phrase) ?? [])) continue;
     candidates.push({ phrase, ratio, frequency });
   }
@@ -293,7 +299,7 @@ function buildVocabulary(
 }
 
 function validToken(token: string, vocabulary: Set<string>): boolean {
-  if (token.length <= 1 || vocabulary.has(token)) return true;
+  if (token.length <= 1 || vocabulary.has(token) || vocabulary.has(bareToken(token))) return true;
   if (MEASURE_PATTERN.test(token) || DIMENSION_PATTERN.test(token) || CODE_PATTERN.test(token)) return true;
   return !/\p{L}/u.test(token);
 }
@@ -326,7 +332,26 @@ function analyzePhrase(
   recordsByPhrase: Map<string, SourceRecord[]>,
   vocabulary: Set<string>,
   learning: Map<string, LearningRecord>,
+  correctWords: ReadonlySet<string>,
+  incorrectWords: ReadonlyMap<string, string | null>,
 ): PhraseAnalysis | null {
+  const mistaken = phrase.split(' ').filter((token) => incorrectWords.has(bareToken(token)));
+  if (mistaken.length > 0) {
+    const replacements = phrase.split(' ').map((token) => {
+      const replacement = incorrectWords.get(bareToken(token));
+      return replacement ? token.replace(bareToken(token), replacement) : token;
+    });
+    const hasFullCorrection = mistaken.every((token) => Boolean(incorrectWords.get(bareToken(token))));
+    return {
+      correctedDescription: replacements.join(' '),
+      reason: 'Palabra incorrecta aprendida',
+      probability: hasFullCorrection ? '100%' : 'No aplica',
+      detail: `Palabra${mistaken.length === 1 ? '' : 's'} marcada${mistaken.length === 1 ? '' : 's'} como incorrecta${mistaken.length === 1 ? '' : 's'}: ${mistaken.join(', ')}.`,
+      confidence: hasFullCorrection ? 'high' : 'none',
+      method: 'learned-decision',
+      doubtfulTokens: mistaken,
+    };
+  }
   const learned = learning.get(phrase);
   if (learned) {
     const recommendation = normalized(learned.recomendado);
@@ -342,7 +367,7 @@ function analyzePhrase(
     };
   }
 
-  const candidate = topPhraseCandidates(phrase, frequency, records, validPhrases, frequencies, recordsByPhrase)[0];
+  const candidate = topPhraseCandidates(phrase, frequency, records, validPhrases, frequencies, recordsByPhrase, correctWords)[0];
   if (candidate) {
     const sameTokenCount = phrase.split(' ').length === candidate.phrase.split(' ').length;
     const confidence = candidate.ratio >= HIGH_CONFIDENCE_CUTOFF && sameTokenCount ? 'high' : 'medium';
@@ -370,7 +395,9 @@ function analyzePhrase(
   };
 }
 
-export function generateOrthographyAlerts(dataset: SourceDataset, targetColumn = 'Descripcion'): OrthographyAlert[] {
+export function generateOrthographyAlerts(dataset: SourceDataset, targetColumn = 'Descripcion', lexicon: OrthographyLexicon = { correct: [], incorrect: {} }): OrthographyAlert[] {
+  const correctWords = new Set(lexicon.correct.map((word) => normalized(word)).filter(Boolean));
+  const incorrectWords = new Map(Object.entries(lexicon.incorrect).map(([word, replacement]) => [normalized(word), replacement ? normalized(replacement) : null] as const));
   const frequencies = new Map<string, number>();
   const recordsByPhrase = new Map<string, SourceRecord[]>();
   const normalizedRows = dataset.records.map((record) => {
@@ -385,13 +412,15 @@ export function generateOrthographyAlerts(dataset: SourceDataset, targetColumn =
   });
   const learning = normalizedLearning();
   const vocabulary = buildVocabulary(dataset, frequencies, learning);
+  for (const word of correctWords) vocabulary.add(word);
+  for (const word of incorrectWords.keys()) vocabulary.delete(word);
   const validPhrases = [...frequencies]
     .filter(([phrase, count]) => Boolean(phrase) && count >= VALID_PHRASE_MINIMUM)
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], 'es'))
     .map(([phrase]) => phrase);
   const analyses = new Map<string, PhraseAnalysis | null>();
   for (const [phrase, frequency] of frequencies) {
-    if (!phrase || frequency >= VALID_PHRASE_MINIMUM) continue;
+    if (!phrase || (frequency >= VALID_PHRASE_MINIMUM && !phrase.split(' ').some((token) => incorrectWords.has(bareToken(token))))) continue;
     analyses.set(phrase, analyzePhrase(
       phrase,
       frequency,
@@ -401,6 +430,8 @@ export function generateOrthographyAlerts(dataset: SourceDataset, targetColumn =
       recordsByPhrase,
       vocabulary,
       learning,
+      correctWords,
+      incorrectWords,
     ));
   }
 

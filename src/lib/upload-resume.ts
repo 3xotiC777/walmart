@@ -1,3 +1,5 @@
+import type { OrthographyLexicon } from './types';
+
 export interface ResumableUploadCandidate {
   id: string;
   panel_object_path: string;
@@ -6,6 +8,7 @@ export interface ResumableUploadCandidate {
   invoice_sha256: unknown;
   has_barcode: boolean;
   status: string;
+  orthography_lexicon?: OrthographyLexicon;
 }
 
 interface UploadFingerprint {

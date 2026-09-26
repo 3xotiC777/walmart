@@ -19,6 +19,8 @@ const LEADER_LINKS = [
   { href: '/workspace/multimedia', label: 'Multimedia', icon: MediaIcon },
   { href: '/workspace/equipo', label: 'Equipo', icon: UsersIcon },
   { href: '/workspace/historia', label: 'Historia', icon: FileIcon },
+  { href: '/workspace/ortografia', label: 'Ortografía', icon: FileIcon },
+  { href: '/workspace/descripcion-automatica', label: 'Descripción automática', icon: FileIcon },
   { href: '/workspace/exportar', label: 'Descargas', icon: FileIcon },
 ] as const;
 

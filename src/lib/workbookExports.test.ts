@@ -207,6 +207,29 @@ describe('base con sugerencias', () => {
     expect(rows[2]).toEqual([null, null, null, null, null, null]);
     expect(rows[3]).toEqual(['ROW-2', null, 'ID-2', null, 'DOS', null]);
   });
+
+  it('muestra el texto similar y el porcentaje sin convertirlo en sugerencia automática', () => {
+    const dataset: WorkbookSourceDataset = {
+      headers: ['Descripcion', 'Marca_Wm'],
+      records: [{ excelRow: 2, values: ['GASEOSA COLA 500ML', 'MARCA LARGA A'] }],
+    };
+    const workbook = XLSX.read(buildSuggestionsWorkbook(dataset, [], {
+      similarityMatches: [
+        { excelRow: 2, field: 'Descripcion', match: 'GASEOSA COLA 500MLX', percentage: 97.44 },
+        { excelRow: 2, field: 'Marca_Wm', match: 'MARCA LARGA B', percentage: 96 },
+      ],
+    }), { type: 'array' });
+    const sheet = workbook.Sheets['pqm consolidado'];
+    const rows = XLSX.utils.sheet_to_json<Array<string | number | null>>(sheet, { header: 1, defval: null });
+    expect(rows[0]).toEqual([
+      'Descripcion', 'Descripcion_Sugerida', 'Descripcion_Similar', 'Descripcion_Similitud_%',
+      'Marca_Wm', 'Marca_Wm_Sugerida', 'Marca_Wm_Similar', 'Marca_Wm_Similitud_%',
+    ]);
+    expect(rows[1]).toEqual([
+      'GASEOSA COLA 500ML', null, 'GASEOSA COLA 500MLX', 97.44,
+      'MARCA LARGA A', null, 'MARCA LARGA B', 96,
+    ]);
+  });
 });
 
 describe('parche OOXML del libro original', () => {

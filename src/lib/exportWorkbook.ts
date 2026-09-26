@@ -79,6 +79,8 @@ export function buildOutputWorkbook(
     Umbral_15_Por_Ciento: alert.priceThreshold ?? null,
     Porcentaje_Diferencia_Promedio: alert.priceDifferencePercent ?? null,
     Foto_Factura: alert.invoiceUrls?.join('\n') ?? '',
+    Texto_Similar: alert.similarityMatch ?? '',
+    Porcentaje_Similitud: alert.similarityPercent ?? null,
   }));
   const alertsSheet = XLSX.utils.json_to_sheet(alertRows, {
     header: [
@@ -98,6 +100,8 @@ export function buildOutputWorkbook(
       'Umbral_15_Por_Ciento',
       'Porcentaje_Diferencia_Promedio',
       'Foto_Factura',
+      'Texto_Similar',
+      'Porcentaje_Similitud',
     ],
   });
   result.alerts.forEach((alert, index) => {
@@ -110,12 +114,14 @@ export function buildOutputWorkbook(
     const averageCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 12 })];
     const thresholdCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 13 })];
     const differenceCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 14 })];
+    const similarityCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 17 })];
     if (averageCell) averageCell.z = '#,##0.0000';
     if (thresholdCell) thresholdCell.z = '#,##0.0000';
     if (differenceCell) differenceCell.z = '0.00%';
+    if (similarityCell) similarityCell.z = '0.00"%"';
   }
   addAutofilter(alertsSheet);
-  setColumns(alertsSheet, [12, 30, 12, 20, 16, 18, 46, 44, 24, 34, 46, 72, 22, 22, 30, 70]);
+  setColumns(alertsSheet, [12, 30, 12, 20, 16, 18, 46, 44, 24, 34, 46, 72, 22, 22, 30, 70, 46, 22]);
   XLSX.utils.book_append_sheet(workbook, alertsSheet, 'Alertas');
 
   const reviewedHeader = [

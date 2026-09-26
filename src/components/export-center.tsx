@@ -5,13 +5,13 @@ import { useState } from 'react';
 import { AlertIcon, CheckIcon, DownloadIcon, SparkIcon } from './icons';
 import { createBrowserSupabaseClient } from '@/lib/supabase/client';
 import type { parseWorkbook } from '@/lib/parser';
-import type { WorkbookCellCorrection, WorkbookSuggestion } from '@/lib/workbookExports';
-import type { HierarchyCatalog } from '@/lib/types';
+import type { WorkbookCellCorrection, WorkbookSimilarityMatch, WorkbookSuggestion } from '@/lib/workbookExports';
+import type { HierarchyCatalog, OrthographyLexicon } from '@/lib/types';
 import { buildCorrectionTraceabilityValues, CORRECTION_TRACEABILITY_HEADER } from '@/lib/correction-attribution';
 import type { ExportAuditKind } from '@/lib/export-audit';
 import { classifyDatabaseError, safeExternalErrorMessage, type DatabaseErrorLike } from '@/lib/database-error';
 
-interface UploadInfo { id: string; display_name: string; panel_object_path: string; has_barcode: boolean; total_rows: number; task_count: number; alert_count: number; orthography_count: number; pending_task_count: number; corrected_cell_count: number; confirmed_correct_count: number; created_at: string }
+interface UploadInfo { id: string; display_name: string; panel_object_path: string; has_barcode: boolean; orthography_lexicon: OrthographyLexicon; total_rows: number; task_count: number; alert_count: number; orthography_count: number; pending_task_count: number; corrected_cell_count: number; confirmed_correct_count: number; created_at: string }
 interface PreflightSummary {
   pendingTasks: number;
   remainingAlertCount: number;
@@ -234,6 +234,7 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
             decisions: data.decisions,
             hierarchy,
             hasBarcode: upload.has_barcode,
+            orthographyLexicon: upload.orthography_lexicon,
           });
       const requiresDraft = Number(data.snapshot.pending_task_count) > 0 || !revalidation.safeForFinal;
       const preflightSummary: PreflightSummary = {
@@ -260,7 +261,22 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
           const taskById = new Map(data.tasks.map((task) => [task.id, task]));
           const unique = new Map<string, WorkbookSuggestion>();
           const conflicted = new Set<string>();
+          const similarityMatches: WorkbookSimilarityMatch[] = [];
           for (const alert of data.alerts) {
+            if (alert.rule_code === 'R31' || alert.rule_code === 'R32') {
+              const task = taskById.get(alert.task_id);
+              const row = task ? (Array.isArray(task.source_rows) ? task.source_rows[0] : task.source_rows) : null;
+              const match = alert.suggestion_evidence?.inputs?.Coincidencia;
+              const percentage = Number(alert.suggestion_evidence?.inputs?.Similitud_pct);
+              if (row && typeof match === 'string' && match && Number.isFinite(percentage)) {
+                similarityMatches.push({
+                  excelRow: row.excel_row,
+                  field: alert.rule_code === 'R31' ? 'Descripcion' : 'Marca_Wm',
+                  match,
+                  percentage,
+                });
+              }
+            }
             if (!alert.can_auto_apply || alert.suggestion_confidence !== 'high' || alert.suggested_column_index === null || alert.suggested_value === null) continue;
             const task = taskById.get(alert.task_id); const row = task ? (Array.isArray(task.source_rows) ? task.source_rows[0] : task.source_rows) : null;
             if (!row) continue;
@@ -275,7 +291,7 @@ export function ExportCenter({ upload }: { upload: UploadInfo }) {
           }
           await assertSnapshotVersion(data.snapshot.version);
           const fileName = `Base_PQM_con_Sugerencias_${new Date().toISOString().slice(0, 10)}.xlsx`;
-          const buffer = buildSuggestionsWorkbook(dataset, [...unique.values()]);
+          const buffer = buildSuggestionsWorkbook(dataset, [...unique.values()], { similarityMatches });
           await recordDownload(kind, fileName, false, preflightSummary, Number(data.snapshot.version));
           save(buffer, fileName);
         } else {
