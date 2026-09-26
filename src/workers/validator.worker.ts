@@ -53,7 +53,7 @@ worker.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
     const validation = validateDataset(dataset, hierarchy, invoices, { hasBarcode: effectiveHasBarcode });
 
     progress('Revisando ortografía y espacios…', 72);
-    const orthographyAlerts = generateOrthographyAlerts(dataset);
+    const orthographyAlerts = generateOrthographyAlerts(dataset, 'Descripcion', event.data.orthographyLexicon);
     const orthographyDisplayAlerts = collaborationIngestion
       ? []
       : orthographyAlerts.map((alert) => orthographyAlertRecord(

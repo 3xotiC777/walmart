@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server';
 
+/** Reject null, arrays, primitives and malformed JSON before accessing fields. */
+export async function readJsonObject(request: Request): Promise<Record<string, unknown> | null> {
+  const value: unknown = await request.json().catch(() => null);
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
 export function jsonError(message: string, status = 400, details?: unknown) {
   return NextResponse.json({ ok: false, message, details }, { status });
 }

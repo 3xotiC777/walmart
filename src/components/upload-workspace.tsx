@@ -9,10 +9,18 @@ import { FileSnapshotError, resumableUpload, snapshotUploadFile, type UploadFile
 import { safeExternalErrorMessage } from '@/lib/database-error';
 import { DatabaseOperationError, runDatabaseOperation } from '@/lib/database-operation';
 import { createBrowserSupabaseClient } from '@/lib/supabase/client';
-import type { WorkerMessage, WorkerRequest, WorkerResult } from '@/lib/types';
+import type { OrthographyLexicon, WorkerMessage, WorkerRequest, WorkerResult } from '@/lib/types';
 
 type Phase = 'select' | 'validating' | 'uploading' | 'saving' | 'done' | 'error';
 const MAX_SIZE = 150 * 1024 * 1024;
+
+function sameLexicon(left: OrthographyLexicon, right: OrthographyLexicon): boolean {
+  if (left.correct.length !== right.correct.length) return false;
+  if ([...left.correct].sort().join('\u0000') !== [...right.correct].sort().join('\u0000')) return false;
+  const a = Object.entries(left.incorrect).sort(([first], [second]) => first.localeCompare(second));
+  const b = Object.entries(right.incorrect).sort(([first], [second]) => first.localeCompare(second));
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 function FileDrop({ title, description, file, disabled, onChange }: { title: string; description: string; file: File | null; disabled: boolean; onChange: (file: File | null) => void }) {
   const input = useRef<HTMLInputElement>(null);
@@ -30,7 +38,7 @@ function FileDrop({ title, description, file, disabled, onChange }: { title: str
   );
 }
 
-async function analyze(panel: UploadFileSnapshot, invoices: UploadFileSnapshot, hasBarcode: boolean, onProgress: (message: string, percent: number) => void, signal: AbortSignal): Promise<WorkerResult> {
+async function analyze(panel: UploadFileSnapshot, invoices: UploadFileSnapshot, hasBarcode: boolean, orthographyLexicon: OrthographyLexicon, onProgress: (message: string, percent: number) => void, signal: AbortSignal): Promise<WorkerResult> {
   signal.throwIfAborted();
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../workers/validator.worker.ts', import.meta.url), { type: 'module' });
@@ -52,6 +60,7 @@ async function analyze(panel: UploadFileSnapshot, invoices: UploadFileSnapshot, 
       invoiceBuffer: invoices.buffer,
       invoiceFileName: invoices.file.name,
       hasBarcode,
+      orthographyLexicon,
       purpose: 'collaboration-ingestion',
     };
     worker.postMessage(request, [panel.buffer, invoices.buffer]);
@@ -140,12 +149,15 @@ export function UploadWorkspace() {
     let uploadId: string | null = null;
     try {
       setError(''); setPhase('validating'); setProgress(2); setMessage('Validando hojas, columnas y reglas…');
-      const [panelSnapshot, invoiceSnapshot] = await Promise.all([
+      let [panelSnapshot, invoiceSnapshot] = await Promise.all([
         snapshotUploadFile(panel, 'panel maestro PQM'),
         snapshotUploadFile(invoices, 'referencias de facturas'),
       ]);
       signal.throwIfAborted();
-      const result = await analyze(panelSnapshot, invoiceSnapshot, hasBarcode, (next, value) => { setMessage(next); setProgress(value); }, signal);
+      const lexiconResponse = await fetch('/api/orthography-terms', { cache: 'no-store', signal });
+      if (!lexiconResponse.ok) throw new Error('No fue posible cargar el vocabulario de ortografía.');
+      const { lexicon } = await lexiconResponse.json() as { lexicon: OrthographyLexicon };
+      let result = await analyze(panelSnapshot, invoiceSnapshot, hasBarcode, lexicon, (next, value) => { setMessage(next); setProgress(value); }, signal);
       signal.throwIfAborted();
       const effectiveHasBarcode = result.dataset.hasBarcode ?? hasBarcode;
       if (effectiveHasBarcode !== hasBarcode) {
@@ -155,14 +167,25 @@ export function UploadWorkspace() {
       setMetrics(result.collaboration.metrics);
       setMessage('Verificando que los archivos sean únicos…'); setProgress(30);
       signal.throwIfAborted();
-      const created = await postJson<{ uploadId: string; panelPath: string; invoicePath: string; resumed?: boolean }>('/api/uploads', {
+      const created = await postJson<{ uploadId: string; panelPath: string; invoicePath: string; resumed?: boolean; orthographyLexicon: OrthographyLexicon }>('/api/uploads', {
         panelName: panel.name, invoiceName: invoices.name, displayName: panel.name,
         panelHash: panelSnapshot.sha256, invoiceHash: invoiceSnapshot.sha256,
         panelSize: panelSnapshot.file.size, invoiceSize: invoiceSnapshot.file.size,
         headers: result.dataset.headers,
         hasBarcode: effectiveHasBarcode,
+        orthographyLexicon: lexicon,
       }, 5, signal);
       uploadId = created.uploadId;
+      if (created.resumed && !sameLexicon(created.orthographyLexicon, lexicon)) {
+        setMessage('Retomando el vocabulario fijado para esta jornada…');
+        [panelSnapshot, invoiceSnapshot] = await Promise.all([
+          snapshotUploadFile(panel, 'panel maestro PQM'),
+          snapshotUploadFile(invoices, 'referencias de facturas'),
+        ]);
+        result = await analyze(panelSnapshot, invoiceSnapshot, effectiveHasBarcode, created.orthographyLexicon,
+          (next, value) => { setMessage(next); setProgress(value); }, signal);
+        setMetrics(result.collaboration.metrics);
+      }
 
       setPhase('uploading');
       setMessage(created.resumed ? 'Retomando la carga privada del panel…' : 'Subiendo el panel de forma privada…');

@@ -2,7 +2,7 @@ import { collaborationAlertEvidenceFingerprint, normalizeEvidenceFingerprint } f
 import { createCollaborationManifest } from './collaboration';
 import { generateOrthographyAlerts } from './orthography';
 import { validateDataset } from './rules';
-import type { HierarchyCatalog, SourceDataset } from './types';
+import type { HierarchyCatalog, OrthographyLexicon, SourceDataset } from './types';
 import { coerceWorkbookCorrectionValue } from './workbookExports';
 
 export interface ExportResolutionProjection {
@@ -139,6 +139,7 @@ export async function revalidateExportOverlay(input: {
   decisions: ReadonlyArray<ExportDecisionProjection>;
   hierarchy: HierarchyCatalog;
   hasBarcode: boolean;
+  orthographyLexicon?: OrthographyLexicon;
 }): Promise<ExportRevalidationResult> {
   const overlayDataset = {
     ...applyOverlayToDataset(input.dataset, input.resolutions),
@@ -147,7 +148,7 @@ export async function revalidateExportOverlay(input: {
   const validation = validateDataset(overlayDataset, input.hierarchy, undefined, {
     hasBarcode: input.hasBarcode,
   });
-  const orthography = generateOrthographyAlerts(overlayDataset);
+  const orthography = generateOrthographyAlerts(overlayDataset, 'Descripcion', input.orthographyLexicon);
   const manifest = createCollaborationManifest(overlayDataset, validation, orthography);
   const storedByEvent = new Map(input.alerts.map((alert) => [alert.event_key, alert]));
   const currentDecisionByAlert = new Map(

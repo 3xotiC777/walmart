@@ -40,7 +40,7 @@ export interface ReportAlert {
   suggested_value: string | null;
   suggestion_confidence: string;
   suggestion_method: string | null;
-  suggestion_evidence?: { statistics?: ReportStatistics } | null;
+  suggestion_evidence?: { statistics?: ReportStatistics; inputs?: { Coincidencia?: string; Similitud_pct?: number } } | null;
   status: string;
 }
 
@@ -163,6 +163,7 @@ export function buildCollaborativeReportWorkbook(input: {
     'Promedio_Grupo', 'Umbral_15_Por_Ciento', 'Porcentaje_Diferencia_Promedio', 'Foto_Factura',
     'Solución_Propuesta', 'Confianza', 'Método', 'Responsable', 'Estado',
     'Decisión', 'Valor_Final', 'Fecha_Decisión',
+    'Texto_Similar', 'Porcentaje_Similitud',
   ];
   const alertRows = orderedAlerts.map((alert) => {
     const task = taskById.get(alert.task_id);
@@ -180,6 +181,8 @@ export function buildCollaborativeReportWorkbook(input: {
       alert.suggestion_method,
       block?.assigned_to ? nameByUser.get(block.assigned_to) ?? block.assigned_to : 'Sin asignar',
       alert.status, decision?.decision ?? '', decision?.resolved_value ?? '', decision?.decided_at ?? '',
+      alert.suggestion_evidence?.inputs?.Coincidencia ?? '',
+      alert.suggestion_evidence?.inputs?.Similitud_pct ?? null,
     ];
   });
 
@@ -207,7 +210,7 @@ export function buildCollaborativeReportWorkbook(input: {
   const workbook = XLSX.utils.book_new();
   workbook.Props = { Title: `Reporte colaborativo ${input.upload.display_name}`, Author: 'PQM Control Walmart', CreatedDate: new Date() };
   XLSX.utils.book_append_sheet(workbook, aoaSheet(summary, [14, 34, 24, 20, 14, 14, 14, 76]), 'Resumen');
-  const alertsSheet = aoaSheet([alertHeader, ...alertRows], [12, 12, 18, 18, 18, 38, 24, 24, 35, 70, 20, 22, 28, 60, 32, 14, 22, 26, 14, 22, 28, 22]);
+  const alertsSheet = aoaSheet([alertHeader, ...alertRows], [12, 12, 18, 18, 18, 38, 24, 24, 35, 70, 20, 22, 28, 60, 32, 14, 22, 26, 14, 22, 28, 22, 38, 22]);
   alertRows.forEach((row, index) => {
     const firstInvoice = String(row[13] ?? '').split('\n').filter(Boolean)[0];
     const cell = alertsSheet[XLSX.utils.encode_cell({ r: index + 1, c: 13 })];
@@ -217,9 +220,11 @@ export function buildCollaborativeReportWorkbook(input: {
     const averageCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 10 })];
     const thresholdCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 11 })];
     const differenceCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 12 })];
+    const similarityCell = alertsSheet[XLSX.utils.encode_cell({ r: row, c: 23 })];
     if (averageCell) averageCell.z = '#,##0.0000';
     if (thresholdCell) thresholdCell.z = '#,##0.0000';
     if (differenceCell) differenceCell.z = '0.00%';
+    if (similarityCell) similarityCell.z = '0.00"%"';
   }
   XLSX.utils.book_append_sheet(workbook, alertsSheet, 'Alertas');
   XLSX.utils.book_append_sheet(workbook, aoaSheet([taskHeader, ...taskRows], [16, 28, 90, 12, ...sourceHeaders.map((header) => Math.min(48, Math.max(12, header.length + 2))), 26, 14]), 'Registros_a_revisar');

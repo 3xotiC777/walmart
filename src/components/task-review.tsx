@@ -16,7 +16,7 @@ export interface AlertView {
   suggested_value: string | null;
   suggestion_method: string | null;
   suggestion_confidence: string;
-  suggestion_evidence: { summary?: string; groupSize?: number } | null;
+  suggestion_evidence: { summary?: string; groupSize?: number; inputs?: { Coincidencia?: string; Similitud_pct?: number } } | null;
   suggestion_alternatives: Array<{ value: unknown; count: number }> | null;
   can_auto_apply: boolean;
   status: string;
@@ -144,6 +144,15 @@ export function TaskReview({
             </div>
             <div className="panel-body">
               <p>{alert.detail}</p>
+              {['R31', 'R32'].includes(alert.rule_code) && alert.suggestion_evidence?.inputs?.Coincidencia && (
+                <div className="form-notice" role="note">
+                  <strong>{alert.rule_code === 'R31' ? 'Descripción similar' : 'Marca similar'}: </strong>
+                  {alert.suggestion_evidence.inputs.Coincidencia}
+                  {typeof alert.suggestion_evidence.inputs.Similitud_pct === 'number'
+                    ? ` · ${alert.suggestion_evidence.inputs.Similitud_pct.toLocaleString('es-CO')}% de similitud`
+                    : ''}
+                </div>
+              )}
               <div className="before-after">
                 <article className="value-card">
                   <small>{decisionContext.hasPriorCorrection ? 'Valor vigente' : 'Valor actual'}</small>

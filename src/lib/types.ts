@@ -41,6 +41,11 @@ export interface OrthographyAlert {
   doubtfulTokens: string[];
 }
 
+export interface OrthographyLexicon {
+  correct: string[];
+  incorrect: Record<string, string | null>;
+}
+
 export interface HierarchyEntry {
   producto: string;
   categoria: string;
@@ -89,6 +94,8 @@ export interface AlertRecord {
   groupAverage?: number;
   priceThreshold?: number;
   priceDifferencePercent?: number;
+  similarityMatch?: string;
+  similarityPercent?: number;
   invoiceUrls?: string[];
 }
 
@@ -144,5 +151,6 @@ export interface WorkerRequest {
   invoiceBuffer: ArrayBuffer;
   invoiceFileName: string;
   hasBarcode: boolean;
+  orthographyLexicon?: OrthographyLexicon;
   purpose?: 'full-report' | 'collaboration-ingestion';
 }

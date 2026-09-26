@@ -48,8 +48,12 @@ describe('Excel de salida', () => {
     expect(alertHeaders).not.toContain('Cuartil_1');
     expect(alertHeaders).not.toContain('Limite_Superior');
     const alertRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas);
-    expect(alertRows[0].Foto_Factura).toBe('https://example.com/factura-1.jpg\nhttps://example.com/factura-2.jpg');
-    expect(workbook.Sheets.Alertas.P2.l?.Target).toBe('https://example.com/factura-1.jpg');
+    const similar = alertRows.find((row) => row.Regla === 'R31');
+    expect(similar?.Texto_Similar).toBeTruthy();
+    expect(Number(similar?.Porcentaje_Similitud)).toBeGreaterThanOrEqual(95);
+    const invoiceAlertIndex = alertRows.findIndex((row) => row['Id_Dn W'] === 'ID-3' && row.Foto_Factura);
+    expect(alertRows[invoiceAlertIndex].Foto_Factura).toBe('https://example.com/factura-1.jpg\nhttps://example.com/factura-2.jpg');
+    expect(workbook.Sheets.Alertas[`P${invoiceAlertIndex + 2}`].l?.Target).toBe('https://example.com/factura-1.jpg');
     const orthography = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Alertas_Ortografia);
     expect(orthography).toHaveLength(2);
     expect(orthography[1]).toMatchObject({
@@ -60,7 +64,7 @@ describe('Excel de salida', () => {
       'Método': 'frequent-phrase',
     });
     const reviewed = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Registros_a_revisar);
-    expect(reviewed).toHaveLength(1);
+    expect(reviewed).toHaveLength(4);
     expect(reviewed[0].codiGo_barras).toBe('00123');
   });
 

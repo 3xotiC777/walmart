@@ -15,6 +15,7 @@ import {
 } from './descriptionQuality';
 import { classifyDescriptionGramaje } from './descriptionGramaje';
 import { isUnidentifiedBarcode } from './barcode';
+import { findSimilarValues } from './similarity';
 
 interface CardinalityRule {
   id: string;
@@ -83,6 +84,8 @@ const AUTOMATIC_RULES: RuleDefinition[] = [
     'Calidad de descripción',
     'La descripción debe comenzar con un producto compatible con Producto_Wm, incluir después la marca exacta de Marca_Wm —salvo NO IDENTIFICABLE o SIN MARCA— y ubicar luego el gramaje correspondiente.',
   ],
+  ['R31', 'Descripciones muy similares', 'Alerta descripciones distintas cuya similitud de texto es igual o superior al 95%; muestra la coincidencia más cercana. No propone una sustitución automática.'],
+  ['R32', 'Marcas muy similares', 'Alerta marcas distintas cuya similitud de texto es igual o superior al 95%; muestra la coincidencia más cercana. No propone una sustitución automática.'],
 ].map(([id, name, description]) => ({
   id,
   name,
@@ -691,6 +694,29 @@ export function validateDataset(
         observed: displayValue(record.fields[field]),
         expected: expectedValue,
         detail: `Para ${displayValue(record.fields.Producto_Wm)}, ${field} es "${displayValue(record.fields[field])}" y la jerarquía indica "${expectedValue}".`,
+      });
+    }
+  }
+
+  for (const [ruleId, field] of [['R31', 'Descripcion'], ['R32', 'Marca_Wm']] as const) {
+    const excluded = field === 'Marca_Wm' ? SPECIAL_BRANDS : new Set<string>();
+    const matches = findSimilarValues(dataset.records
+      .map((record) => displayValue(record.fields[field]))
+      .filter((value) => !excluded.has(normalizeText(value))));
+    for (const record of dataset.records) {
+      const observed = displayValue(record.fields[field]);
+      const match = matches.get(normalizeText(observed).replace(/\s+/g, ' '));
+      if (!match || excluded.has(normalizeText(observed))) continue;
+      const percent = Number((match.similarity * 100).toFixed(2));
+      addAlert({
+        ...baseAlert(record, ruleId),
+        key: observed,
+        field,
+        observed,
+        expected: match.match,
+        detail: `${field} tiene ${percent.toLocaleString('es-CO', { maximumFractionDigits: 2 })}% de similitud con "${match.match}". Son valores diferentes; confirmar cuál corresponde.`,
+        similarityMatch: match.match,
+        similarityPercent: percent,
       });
     }
   }
